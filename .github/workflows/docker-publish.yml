@@ -1,8 +1,8 @@
 name: 构建并发布 Docker 镜像
 
-# 触发方式：推送 v 开头的标签（如 v0.0.1、v1.2.3）时自动构建并发布镜像到 GHCR
+# 触发方式：推送 v 开头的标签（如 v0.0.1、v1.2.3）时自动构建镜像、发布到 GHCR 并创建 GitHub Release
 # 发布地址：ghcr.io/super-mortal/super-link
-# 也可在 Actions 页面手动点 "Run workflow" 触发（用于验证流水线）
+# 也可在 Actions 页面手动点 "Run workflow" 触发（用于验证流水线，手动触发不创建 Release）
 on:
   push:
     tags:
@@ -17,7 +17,7 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       packages: write
     steps:
       - name: 检出代码
@@ -53,3 +53,10 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: 创建 GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true

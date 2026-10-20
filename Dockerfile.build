@@ -1,0 +1,63 @@
+# Stage 1 – Build static assets (Vite/Node)
+FROM node:24 AS vite
+
+WORKDIR /app
+
+# Copy only what Vite needs
+COPY frontend ./
+
+RUN npm ci && \
+    npm run build
+
+# ––––––––––––––––––––––––––––––––––––––
+
+# Stage 2: Composer runtime dependencies
+FROM composer/composer AS composer
+
+WORKDIR /app
+
+# Copy source files needed for Composer install and autoload
+COPY . .
+
+RUN composer install --no-dev --optimize-autoloader --prefer-dist --no-interaction --no-scripts
+
+# ––––––––––––––––––––––––––––––––––––––
+
+# Stage 3: Final runtime image
+FROM php:8.4-apache
+
+# Install system dependencies
+RUN apt-get update && \
+    apt-get install -y libzip-dev && \
+    docker-php-ext-install zip && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN a2enmod rewrite && \
+    a2enmod ssl
+
+WORKDIR /var/www/html
+
+RUN cp /usr/local/etc/php/php.ini-production /usr/local/etc/php/php.ini && \
+    sed -i 's/upload_max_filesize.*/upload_max_filesize = 32M/' /usr/local/etc/php/php.ini && \
+    sed -i 's/post_max_size.*/post_max_size = 32M/' /usr/local/etc/php/php.ini && \
+    sed -i 's/memory_limit.*/memory_limit = 256M/' /usr/local/etc/php/php.ini && \
+    sed -i 's/max_execution_time.*/max_execution_time = 60/' /usr/local/etc/php/php.ini
+
+RUN rm -rf /etc/apache2/sites-enabled/*
+COPY ./apache-conf /etc/apache2/sites-enabled
+
+COPY Config.php init.php routes.php app-info.json ./
+COPY controllers controllers
+COPY framework framework
+COPY models models
+COPY public public
+COPY --from=vite /app/dist public/dist
+COPY utils utils
+COPY views views
+COPY --from=composer /app/vendor vendor
+
+RUN mkdir /var/www/html/storage && \
+    chown www-data:www-data /var/www/html/storage
+
+RUN find . \( -name ".DS_Store" -o -name ".gitignore" \) -type f -delete

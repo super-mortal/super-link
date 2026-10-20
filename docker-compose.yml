@@ -1,0 +1,38 @@
+name: super-link
+services:
+  apache-php:
+    container_name: web-app
+    build:
+      context: .
+      dockerfile: Dockerfile.build
+    image: super-mortal/super-link:latest
+    restart: unless-stopped
+    working_dir: /var/www/html
+    environment:
+      - WATCHTOWER_URL=http://watchtower:8080
+      - WATCHTOWER_TOKEN=${WATCHTOWER_TOKEN:-super-link-watchtower-token}
+    volumes:
+      - super-link-temp-data:/tmp/
+      - super-link-storage:/var/www/html/storage/
+      - super-link-apache-conf:/etc/apache2/sites-enabled/
+    ports:
+      - "${PORT:-4124}:80"
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+  watchtower:
+    image: nickfedor/watchtower
+    container_name: watchtower
+    restart: unless-stopped
+    environment:
+      - WATCHTOWER_HTTP_API_TOKEN=${WATCHTOWER_TOKEN:-super-link-watchtower-token}
+      - WATCHTOWER_HTTP_API_ENDPOINTS=update
+      - WATCHTOWER_CLEANUP=true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    labels:
+      - "com.centurylinklabs.watchtower.enable=false"
+
+volumes:
+  super-link-temp-data:
+  super-link-storage:
+  super-link-apache-conf:

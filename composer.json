@@ -1,0 +1,19 @@
+{
+  "autoload": {
+    "psr-4": {
+      "Framework\\": "framework/",
+      "Controllers\\": "controllers/",
+      "Models\\": "models/",
+      "Utils\\": "utils/"
+    },
+    "files": [
+      "framework/helper-functions.php",
+      "utils/util-functions.php",
+      "Config.php"
+    ]
+  },
+  "require": {
+    "guzzlehttp/guzzle": "^7.0",
+    "respect/validation": "^2.4"
+  }
+}

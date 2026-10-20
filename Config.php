@@ -8,18 +8,18 @@ class Config
 
 	public static function getDBPath(): string
 	{
-		$db_name = $_SERVER['DB_NAME'] ?? self::DB_NAME_DEFAULT;
+		$db_name = getenv('DB_NAME') ?: self::DB_NAME_DEFAULT;
 		return sprintf('%s/%s.db', self::STORAGE_PATH, $db_name);
 	}
 
 	public static function getWatchtowerUrl(): string
 	{
-		return rtrim($_SERVER['WATCHTOWER_URL'] ?? 'http://watchtower:8080', '/');
+		return rtrim(getenv('WATCHTOWER_URL') ?: 'http://watchtower:8080', '/');
 	}
 
 	public static function getWatchtowerToken(): string
 	{
-		return $_SERVER['WATCHTOWER_TOKEN'] ?? '';
+		return getenv('WATCHTOWER_TOKEN') ?: '';
 	}
 
 	public static function getPasswordAlgo(): string

@@ -2,10 +2,7 @@ name: super-link
 services:
   apache-php:
     container_name: web-app
-    build:
-      context: .
-      dockerfile: Dockerfile.build
-    image: super-mortal/super-link:latest
+    image: ghcr.io/super-mortal/super-link:latest
     restart: unless-stopped
     working_dir: /var/www/html
     environment:

@@ -1,0 +1,7 @@
+# 本地构建覆盖文件：与 docker-compose.yml 合并使用，从源码构建镜像（用于二次开发）
+# 用法：docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+services:
+  apache-php:
+    build:
+      context: .
+      dockerfile: Dockerfile.build

@@ -28,12 +28,12 @@ super-link 是一个自托管的个人数据管理工具，用来保存、整理
 
 ## 一键部署（推荐）
 
-适合小白的最简流程（复制执行即可）：
+适合小白的最简流程（复制执行即可，自动拉取 CI 预构建镜像，无需本地构建）：
 
 ```bash
 git clone https://github.com/super-mortal/super-link.git
 cd super-link
-docker compose up -d --build
+docker compose up -d
 # 部署完成后访问http://你的服务器IP:4124
 ```
 
@@ -68,7 +68,13 @@ docker compose up -d
 也可临时覆盖：
 
 ```bash
-PORT=4124 docker compose up -d --build
+PORT=4124 docker compose up -d
+```
+
+如需从源码本地构建（二次开发场景），使用构建覆盖文件：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 ```
 
 ## 后续更新部署
@@ -78,8 +84,11 @@ PORT=4124 docker compose up -d --build
 ```bash
 cd /root/super-link
 git pull
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
+
+也可以在应用内一键更新（见下节），无需登录服务器。
 
 ## 应用内一键更新
 

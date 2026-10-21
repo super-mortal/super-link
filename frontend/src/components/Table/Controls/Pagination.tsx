@@ -2,28 +2,46 @@ import type { Table } from '@tanstack/react-table';
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { Button } from '../../ui/button.tsx';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../ui/select.tsx';
-import { useLayoutEffect } from 'react';
+import * as React from 'react';
 
 interface DataTablePaginationProps<TData> {
   table: Table<TData>;
+  /** 「共 N 条{countNoun}」的模块量词，由 MODULES[module].pagination.count 注入 */
+  countNoun?: string;
+  /** 「每页{sizeNoun}数」的模块量词，由 MODULES[module].pagination.size 注入 */
+  sizeNoun?: string;
+  /** 列表内容区的内部滚动容器：翻页后回顶（window 不是滚动容器） */
+  scrollContainerRef?: React.RefObject<HTMLElement | null>;
 }
 
-export function Pagination<TData>({ table }: DataTablePaginationProps<TData>) {
+export function Pagination<TData>({
+  table,
+  countNoun = '项目',
+  sizeNoun = '项目',
+  scrollContainerRef,
+}: DataTablePaginationProps<TData>) {
   const pageIndex = table.getState().pagination.pageIndex;
-  useLayoutEffect(() => {
-    requestAnimationFrame(() => {
-      window.scrollTo({ top: 0, behavior: 'instant' });
-    });
-  }, [pageIndex]);
+  const isInitialRender = React.useRef(true);
+
+  // 只在页码变化时回顶；挂载那次不回顶，避免刷新页面时把用户正在看的位置拉走
+  React.useLayoutEffect(() => {
+    if (isInitialRender.current) {
+      isInitialRender.current = false;
+      return;
+    }
+    scrollContainerRef?.current?.scrollTo({ top: 0 });
+  }, [pageIndex, scrollContainerRef]);
 
   const rowCount = table.getFilteredRowModel().rows.length;
 
   return (
     <div className="flex flex-col gap-5 p-4">
-      <div className="text-muted-foreground flex-1/5 text-center text-sm">共 {rowCount} 条项目</div>
+      <div className="text-muted-foreground flex-1/5 text-center text-sm">
+        共 {rowCount} 条{countNoun}
+      </div>
       <div className="flex flex-col items-center justify-between gap-4 @lg/main:flex-row">
         <div className="flex items-center gap-2">
-          <div className="text-sm font-medium">每页项目数</div>
+          <div className="text-sm font-medium">每页{sizeNoun}数</div>
           <Select
             value={table.getState().pagination.pageSize.toString()}
             onValueChange={(value) => {

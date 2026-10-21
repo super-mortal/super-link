@@ -8,28 +8,17 @@ import {
 } from '@/components/ui/dropdown-menu.tsx';
 import { DropdownMenuTrigger } from '@radix-ui/react-dropdown-menu';
 import { JSX } from 'react';
-import { ItemType } from '@/lib/types.ts';
-import * as React from 'react';
+import type { ModuleSortType } from '@/lib/modules.ts';
 
 export const Sorter: ({
-  selectedSortColumn,
-  isDesc,
+  sorts,
+  selectedSort,
   onChange,
-  columns,
 }: {
-  selectedSortColumn: string | null;
-  isDesc: boolean;
-  onChange: any;
-  columns: Array<any>;
-}) => JSX.Element = ({ selectedSortColumn, isDesc, onChange, columns }) => {
-  const handle = (columnId: keyof ItemType) => {
-    let newIsDesc = isDesc;
-    if (selectedSortColumn === columnId) {
-      newIsDesc = !isDesc;
-    }
-    onChange(columnId, newIsDesc);
-  };
-
+  sorts: readonly ModuleSortType[];
+  selectedSort: string;
+  onChange: (sortKey: string) => void;
+}) => JSX.Element = ({ sorts, selectedSort, onChange }) => {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -40,20 +29,20 @@ export const Sorter: ({
       </DropdownMenuTrigger>
       <DropdownMenuContent side="bottom" align="end" className="min-w-40">
         <DropdownMenuLabel>排序</DropdownMenuLabel>
-        {columns.map((column) => (
+        {sorts.map((sort) => (
           <DropdownMenuItem
-            key={column.id}
-            onSelect={(event: any) => {
+            key={sort.key}
+            onSelect={(event) => {
               // prevent the dropdown from closing on selection
               event.preventDefault();
-              handle(column.id);
+              onChange(sort.key);
             }}
-            className={'flex justify-between ' + (column.id === selectedSortColumn ? ' bg-accent' : '')}
+            className={'flex justify-between ' + (sort.key === selectedSort ? ' bg-accent' : '')}
           >
-            <span>{column.columnDef.header}</span>
+            <span>{sort.label}</span>
             <span>
-              {column.id === selectedSortColumn &&
-                (isDesc ? <ArrowDown className="text-primary" /> : <ArrowUp className="text-primary" />)}
+              {sort.key === selectedSort &&
+                (sort.order === 'desc' ? <ArrowDown className="text-primary" /> : <ArrowUp className="text-primary" />)}
             </span>
           </DropdownMenuItem>
         ))}

@@ -1,0 +1,1344 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>super-link · 统一视图演示</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: {
+    extend: {
+      colors: {
+        background: 'var(--background)', foreground: 'var(--foreground)',
+        card: 'var(--card)',
+        muted: { DEFAULT: 'var(--muted)', foreground: 'var(--muted-foreground)' },
+        border: 'var(--border)',
+        primary: { DEFAULT: 'var(--primary)', foreground: 'var(--primary-foreground)' },
+        secondary: { DEFAULT: 'var(--secondary)', foreground: 'var(--secondary-foreground)' },
+        accent: { DEFAULT: 'var(--accent)', foreground: 'var(--accent-foreground)' },
+        sidebar: { DEFAULT: 'var(--sidebar)', foreground: 'var(--sidebar-foreground)' },
+        destructive: 'var(--destructive)'
+      },
+      fontFamily: { sans: ['system-ui', 'Avenir', 'Helvetica', 'Arial', 'sans-serif'] }
+    }
+  }
+}
+</script>
+<style>
+:root {
+  --background: #ffffff; --foreground: #0a0a0a; --card: #ffffff;
+  --muted: #f5f5f5; --muted-foreground: #737373; --border: #e5e5e5;
+  --primary: #171717; --primary-foreground: #fafafa;
+  --secondary: #f5f5f5; --secondary-foreground: #171717;
+  --accent: #f5f5f5; --accent-foreground: #171717;
+  --sidebar: #fafafa; --sidebar-foreground: #0a0a0a; --destructive: #dc2626;
+}
+.dark {
+  --background: #0f0f0f; --foreground: #fafafa; --card: #1c1c1c;
+  --muted: #262626; --muted-foreground: #a1a1a1; --border: #2e2e2e;
+  --primary: #fafafa; --primary-foreground: #171717;
+  --secondary: #262626; --secondary-foreground: #fafafa;
+  --accent: #262626; --accent-foreground: #fafafa;
+  --sidebar: #1a1a1a; --sidebar-foreground: #fafafa; --destructive: #ef4444;
+}
+* { border-color: var(--border); }
+body { font-family: system-ui, Avenir, Helvetica, Arial, sans-serif; }
+button { cursor: pointer; }
+
+.btn { display:inline-flex; align-items:center; justify-content:center; gap:.5rem; border-radius:6px; font-size:14px; font-weight:500; transition:all .15s; white-space:nowrap; border:none; background:none; color:inherit; }
+.btn:disabled { opacity:.5; pointer-events:none; }
+.btn-default { background:var(--primary); color:var(--primary-foreground); height:36px; padding:0 16px; }
+.btn-default:hover { opacity:.9; }
+.btn-default svg { width:16px; height:16px; }
+.btn-outline { border:1px solid var(--border); background:var(--background); height:36px; padding:0 12px; box-shadow:0 1px 2px rgba(0,0,0,.05); }
+.btn-outline:hover { background:var(--accent); }
+.btn-outline svg { width:16px; height:16px; }
+.btn-ghost { height:36px; width:36px; color:var(--muted-foreground); position:relative; }
+.btn-ghost:hover { background:var(--accent); color:var(--foreground); }
+.btn-ghost svg { width:16px; height:16px; }
+.btn-destructive { border:1px solid var(--destructive); color:var(--destructive); height:36px; padding:0 12px; }
+.btn-destructive:hover { background:rgba(220,38,38,.08); }
+.dark .btn-destructive:hover { background:rgba(239,68,68,.12); }
+.btn-destructive svg { width:14px; height:14px; }
+.btn-sm { height:32px; padding:0 10px; font-size:13px; }
+
+.badge { display:inline-flex; align-items:center; gap:4px; border-radius:9999px; padding:2px 8px; font-size:11px; line-height:1.4; white-space:nowrap; }
+.badge svg { width:10px; height:10px; }
+.badge-secondary { background:var(--secondary); color:var(--secondary-foreground); }
+.badge-update { background:#fef3c7; color:#92400e; font-weight:500; }
+.dark .badge-update { background:#451a03; color:#fbbf24; }
+
+/* 标签徽章（加重样式） */
+.tag-badge { display:inline-flex; align-items:center; gap:5px; border-radius:6px; padding:3px 9px; font-size:11.5px; font-weight:500; line-height:1.5; white-space:nowrap; cursor:pointer; border:1px solid; transition:filter .15s; }
+.tag-badge:hover { filter:brightness(.96); }
+.dark .tag-badge:hover { filter:brightness(1.15); }
+.tag-dot { width:6px; height:6px; border-radius:9999px; flex:none; }
+
+.input { height:36px; border:1px solid var(--border); background:var(--background); border-radius:6px; padding:0 12px; font-size:13px; outline:none; color:var(--foreground); width:100%; }
+.input:focus { box-shadow:0 0 0 3px rgba(120,120,120,.18); }
+.input::placeholder { color:var(--muted-foreground); }
+
+.dd-menu { position:absolute; z-index:60; min-width:190px; background:var(--card); border:1px solid var(--border); border-radius:10px; box-shadow:0 8px 28px rgba(0,0,0,.12); padding:4px; }
+.dd-item { display:flex; align-items:center; gap:8px; width:100%; padding:7px 9px; border-radius:6px; font-size:13px; text-align:left; color:var(--foreground); }
+.dd-item:hover { background:var(--accent); }
+.dd-item svg { width:14px; height:14px; flex:none; color:var(--muted-foreground); }
+.dd-item.danger { color:var(--destructive); }
+.dd-item.danger svg { color:var(--destructive); }
+.dd-sep { height:1px; background:var(--border); margin:4px 0; }
+.dd-label { padding:6px 9px 4px; font-size:12px; font-weight:500; color:var(--muted-foreground); }
+
+/* 统一卡片组件：书签与 Skill 共用，各区域位置固定 */
+.u-card { background:linear-gradient(to top, var(--muted), var(--card)); border:1px solid var(--border); border-radius:10px; padding:16px; display:flex; flex-direction:column; gap:10px; text-align:left; transition:box-shadow .2s, border-color .2s; position:relative; cursor:pointer; }
+.u-card:hover { box-shadow:0 2px 8px rgba(0,0,0,.07); border-color:var(--muted-foreground); }
+.u-card.selected { background:color-mix(in srgb, var(--muted) 50%, var(--card)); }
+.u-card.flash { animation:flash 1.6s ease; }
+@keyframes flash { 0%,60% { box-shadow:0 0 0 3px rgba(59,130,246,.5); } 100% { box-shadow:0 0 0 0 rgba(59,130,246,0); } }
+
+/* 多选复选框（左上角，悬停可见，与实际应用一致） */
+.card-check { position:absolute; top:8px; left:8px; z-index:40; width:16px; height:16px; border:1px solid var(--muted-foreground); border-radius:4px; display:inline-flex; align-items:center; justify-content:center; opacity:0; transition:opacity .15s; background:var(--background); flex:none; padding:0; box-shadow:0 1px 2px rgba(0,0,0,.06); }
+.card-check svg { width:14px; height:14px; color:var(--primary-foreground); opacity:0; }
+.card-check.checked { background:var(--primary); border-color:var(--primary); }
+.card-check.checked svg { opacity:1; }
+.onhover-container:hover .card-check, .u-card.selected .card-check, .has-selection .card-check { opacity:1; }
+
+.onhover-visible { opacity:0; transition:opacity .15s; }
+.onhover-container:hover .onhover-visible, .onhover-visible[data-open="true"] { opacity:1; }
+@media (pointer: coarse) { .onhover-visible { opacity:1; } .card-check { opacity:1; } }
+
+/* 批量操作栏（底部居中深色悬浮 pill，与实际应用一致） */
+.bulk-bar { position:fixed; bottom:5dvh; left:50%; transform:translateX(-50%); z-index:50; display:flex; gap:2px; border-radius:8px; background:var(--primary); padding:4px; }
+.bulk-bar.hidden { display:none; }
+body.sidebar-open .bulk-bar { left:calc(50% + 150px); }
+.bulk-btn { display:flex; align-items:center; gap:6px; border-radius:6px; padding:6px 8px; color:var(--primary-foreground); font-size:13px; white-space:nowrap; }
+.bulk-btn:hover { background:rgba(255,255,255,.16); }
+.dark .bulk-btn:hover { background:rgba(0,0,0,.12); }
+.bulk-btn svg { width:15px; height:15px; flex:none; }
+.bulk-divider { width:1px; align-self:stretch; margin:2px 2px; background:rgba(255,255,255,.3); }
+.dark .bulk-divider { background:rgba(0,0,0,.2); }
+
+.modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:100; display:flex; align-items:center; justify-content:center; padding:16px; animation:fadein .15s ease; }
+.modal { width:100%; max-width:520px; background:var(--card); border:1px solid var(--border); border-radius:12px; box-shadow:0 24px 64px rgba(0,0,0,.25); animation:modalin .2s ease; }
+@keyframes fadein { from { opacity:0; } }
+@keyframes modalin { from { opacity:0; transform:scale(.96) translateY(10px); } }
+
+#toasts { position:fixed; top:16px; left:50%; transform:translateX(-50%); z-index:200; display:flex; flex-direction:column; align-items:center; gap:8px; pointer-events:none; }
+.toast { display:flex; align-items:center; gap:9px; background:var(--card); border:1px solid var(--border); border-radius:10px; box-shadow:0 10px 32px rgba(0,0,0,.16); padding:10px 16px; font-size:13px; animation:toastin .25s ease; max-width:90vw; }
+.toast.out { animation:toastout .25s ease forwards; }
+@keyframes toastin { from { opacity:0; transform:translateY(-10px); } }
+@keyframes toastout { to { opacity:0; transform:translateY(-10px); } }
+.toast svg { width:15px; height:15px; flex:none; }
+.toast.success svg { color:#16a34a; } .toast.error svg { color:var(--destructive); } .toast.info svg { color:#2563eb; }
+
+.theme-icon { position:absolute; transition:all .35s cubic-bezier(.4,0,.2,1); transform:rotate(90deg) scale(0); }
+.theme-icon[data-active="true"] { transform:rotate(0) scale(1); }
+
+#sidebar { transition:width .25s ease; }
+.spin { animation:spin 1s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+
+.prose h1 { font-size:1.15rem; font-weight:600; margin:0 0 .5rem; }
+.prose h2 { font-size:.98rem; font-weight:600; margin:1.1rem 0 .4rem; }
+.prose p { font-size:.875rem; color:var(--muted-foreground); margin:.45rem 0; line-height:1.75; }
+.prose ul { list-style:disc; padding-left:1.2rem; margin:.4rem 0; }
+.prose li { font-size:.875rem; color:var(--muted-foreground); margin:.22rem 0; line-height:1.7; }
+.prose code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.78rem; background:var(--muted); padding:.1rem .35rem; border-radius:4px; }
+.prose pre { background:#171717; color:#e5e5e5; padding:.85rem 1rem; border-radius:8px; overflow-x:auto; margin:.6rem 0; }
+.prose pre code { background:none; color:inherit; padding:0; }
+.prose strong { color:var(--foreground); font-weight:600; }
+
+.no-scrollbar::-webkit-scrollbar { display:none; }
+.no-scrollbar { scrollbar-width:none; }
+.list-row { display:flex; align-items:center; gap:12px; padding:12px 16px; border-bottom:1px solid var(--border); cursor:pointer; }
+.list-row:hover { background:var(--accent); }
+.list-row:last-child { border-bottom:none; }
+
+/* 模块导航（竖排） */
+.module-nav { display:flex; align-items:center; gap:10px; width:100%; padding:8px 12px; border-radius:8px; font-size:14px; color:var(--muted-foreground); text-align:left; transition:background .15s; }
+.module-nav:hover { background:var(--accent); }
+.module-nav[data-active="true"] { background:var(--accent); color:var(--foreground); font-weight:500; }
+.module-nav > svg { width:16px; height:16px; flex:none; }
+.module-nav .count { margin-left:auto; font-size:12px; color:var(--muted-foreground); font-weight:400; }
+
+/* 侧边栏分区头部按钮（与实际应用一致：20px 图标按钮） */
+.side-action { display:flex; align-items:center; justify-content:center; width:20px; height:20px; border-radius:6px; color:var(--muted-foreground); flex:none; }
+.side-action:hover { background:var(--accent); color:var(--foreground); }
+.side-action svg { width:16px; height:16px; }
+
+/* 标签树（与实际应用一致） */
+.tag-row { position:relative; display:flex; align-items:center; gap:8px; width:100%; height:32px; padding:0 8px; border-radius:6px; font-size:14px; text-align:left; color:var(--foreground); }
+.tag-row:hover { background:var(--accent); }
+.tag-row.active { background:var(--primary); color:var(--primary-foreground); font-weight:500; }
+.tag-row .tag-dot { width:10px; height:10px; border-radius:9999px; flex:none; }
+.tag-row .tag-title { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.tag-count { position:absolute; right:26px; font-size:12px; color:var(--muted-foreground); font-variant-numeric:tabular-nums; }
+.tag-row.active .tag-count { color:var(--primary-foreground); opacity:.7; }
+.tag-row:hover .tag-count { opacity:0; }
+.tag-more { position:absolute; right:2px; top:50%; transform:translateY(-50%); display:flex; align-items:center; justify-content:center; width:20px; height:20px; border-radius:6px; opacity:0; color:var(--muted-foreground); }
+.tag-row:hover .tag-more { opacity:1; }
+.tag-more:hover { background:var(--accent); color:var(--foreground); }
+.tag-more svg { width:14px; height:14px; }
+.tag-row.active .tag-more { color:var(--primary-foreground); }
+.tag-chevron { display:flex; align-items:center; justify-content:center; width:24px; height:24px; flex:none; color:var(--muted-foreground); }
+.tag-chevron svg { width:16px; height:16px; transition:transform .15s; }
+.tag-chevron.open svg { transform:rotate(90deg); }
+.tag-children { margin-left:14px; border-left:1px solid var(--border); padding-left:10px; }
+
+/* 卡片右上角操作按钮（与实际应用一致：outline 样式，悬停可见） */
+.card-act { display:flex; align-items:center; justify-content:center; height:36px; border:1px solid var(--border); background:var(--background); border-radius:6px; box-shadow:0 1px 2px rgba(0,0,0,.05); color:var(--foreground); flex:none; }
+.card-act:hover { background:var(--accent); }
+.card-act.expand { padding:0 12px; }
+.card-act.dots { padding:0 6px; }
+.card-act svg { width:16px; height:16px; }
+</style>
+</head>
+<body class="bg-background text-foreground antialiased h-screen overflow-hidden sidebar-open">
+<div class="flex h-full">
+
+  <!-- ============ 侧边栏 ============ -->
+  <aside id="sidebar" class="flex w-[300px] shrink-0 flex-col border-r bg-sidebar overflow-hidden">
+    <!-- 头部：Logo + 明暗切换 + 设置 -->
+    <div class="flex h-14 items-center justify-between gap-2 border-b px-4">
+      <div class="flex items-center gap-2">
+        <div class="flex h-6 w-6 items-center justify-center rounded-md bg-primary text-primary-foreground">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+        </div>
+        <span class="text-lg font-semibold tracking-tight">Super-Link</span>
+      </div>
+      <div class="flex items-center gap-0.5">
+        <button class="btn btn-ghost" data-action="theme" title="切换主题">
+          <svg class="theme-icon" data-theme="light" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+          <svg class="theme-icon" data-theme="dark" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+          <svg class="theme-icon" data-theme="system" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 0 0 20z" fill="currentColor" stroke="none"/></svg>
+        </button>
+        <button class="btn btn-ghost" data-action="settings" title="设置">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="21" y1="4" x2="14" y2="4"/><line x1="10" y1="4" x2="3" y2="4"/><line x1="21" y1="12" x2="12" y2="12"/><line x1="8" y1="12" x2="3" y2="12"/><line x1="21" y1="20" x2="16" y2="20"/><line x1="12" y1="20" x2="3" y2="20"/><line x1="14" y1="2" x2="14" y2="6"/><line x1="8" y1="10" x2="8" y2="14"/><line x1="16" y1="18" x2="16" y2="22"/></svg>
+          <span class="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-yellow-500"></span>
+        </button>
+      </div>
+    </div>
+
+    <!-- 模块导航（竖排，一行一个） -->
+    <nav class="flex flex-col gap-1 px-3 pt-3">
+      <button class="module-nav" data-action="module" data-module="bookmarks">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+        <span>书签</span>
+        <span class="count" id="count-bookmarks">14</span>
+      </button>
+      <button class="module-nav" data-action="module" data-module="skills">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.8L20 10l-6.1 1.2L12 17l-1.9-5.8L4 10l6.1-1.2z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>
+        <span>Skill</span>
+        <span class="count" id="count-skills">12</span>
+      </button>
+    </nav>
+
+    <div class="mx-3 my-2 h-px bg-border"></div>
+
+    <!-- 动态分区：标签 / 分类树 -->
+    <div id="sidebar-section" class="no-scrollbar flex-1 overflow-y-auto px-3 pb-2"></div>
+
+    <!-- 底部用户 -->
+    <div class="border-t p-3">
+      <div class="relative">
+        <button class="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 hover:bg-accent text-left" data-dd="user">
+          <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-muted grayscale">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          </div>
+          <span class="flex-1 truncate text-sm font-medium">小梁</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" class="text-muted-foreground"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
+        </button>
+        <div id="user-menu" class="dd-menu hidden" data-menu="user" style="width:200px">
+          <div class="dd-label">小梁</div>
+          <div class="dd-sep"></div>
+          <button class="dd-item danger" data-action="logout">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            退出登录
+          </button>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ============ 主区域 ============ -->
+  <div class="flex min-w-0 flex-1 flex-col">
+    <!-- 工具栏（撑满宽度） -->
+    <header class="sticky top-0 z-50 flex h-14 w-full items-center gap-1.5 border-b bg-background/95 px-4 backdrop-blur-sm">
+      <button class="btn btn-ghost" data-action="toggle-sidebar" title="切换侧边栏">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/></svg>
+      </button>
+      <div class="mx-1 h-8 w-px bg-border"></div>
+
+      <div class="relative">
+        <button class="btn btn-outline" data-dd="view">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>
+          <span>视图</span>
+        </button>
+        <div class="dd-menu hidden left-0 top-10 w-56" data-menu="view">
+          <div class="dd-label">布局</div>
+          <div class="mx-1 mb-2 flex rounded-md border p-0.5">
+            <button class="flex h-7 flex-1 items-center justify-center rounded-[5px]" data-action="layout" data-layout="list" title="列表">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+            </button>
+            <button class="flex h-7 flex-1 items-center justify-center rounded-[5px]" data-action="layout" data-layout="cards" title="卡片">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>
+            </button>
+            <button class="flex h-7 flex-1 items-center justify-center rounded-[5px]" data-action="layout" data-layout="table" title="表格">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/></svg>
+            </button>
+          </div>
+          <div class="dd-sep"></div>
+          <div class="dd-label">可见字段</div>
+          <div id="fields-menu"></div>
+        </div>
+      </div>
+
+      <div class="relative ml-1.5 min-w-0 flex-1">
+        <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input id="search" class="input pl-7" placeholder="搜索...">
+      </div>
+
+      <div class="relative">
+        <button class="btn btn-outline" data-dd="sort">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 16 4 4 4-4"/><path d="M7 20V4"/><path d="m21 8-4-4-4 4"/><path d="M17 4v16"/></svg>
+          <span id="sort-label">安装时间</span>
+        </button>
+        <div class="dd-menu hidden left-0 top-10 w-52" data-menu="sort" id="sort-menu"></div>
+      </div>
+
+      <button id="btn-add" class="btn btn-default ml-1.5" data-action="open-install">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+        安装 Skill
+      </button>
+    </header>
+
+    <!-- 内容区 -->
+    <div id="content-scroll" class="relative flex-1 overflow-y-auto">
+      <div id="view-list" class="flex min-h-full flex-col">
+        <div id="filter-bar" class="hidden mx-4 mt-4 flex items-center gap-2 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></svg>
+          <span>按标签筛选：<b id="filter-tag-name" class="font-medium text-foreground"></b></span>
+          <button class="ml-auto flex items-center gap-1 hover:text-foreground" data-action="clear-filter">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            清除
+          </button>
+        </div>
+        <div id="list-container" class="flex-1"></div>
+        <div id="empty-state" class="hidden flex-1 items-center justify-center text-lg text-muted-foreground">暂无项目。</div>
+
+        <!-- 分页（与实际应用一致） -->
+        <div id="pagination" class="flex flex-col gap-5 p-4">
+          <div class="text-center text-sm text-muted-foreground">共 <span id="page-total">0</span> 条<span id="page-noun">项目</span></div>
+          <div class="flex flex-col items-center justify-between gap-4 lg:flex-row">
+            <div class="flex items-center gap-2">
+              <div class="text-sm font-medium">每页<span id="page-noun2">项目</span>数</div>
+              <div class="relative">
+                <select id="page-size" class="input h-9 w-[76px] appearance-none pr-7 text-center">
+                  <option value="10">10</option>
+                  <option value="25" selected>25</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                </select>
+                <svg class="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+              </div>
+            </div>
+            <div class="flex items-center gap-2">
+              <div class="text-sm font-medium">第 <span id="page-cur">1</span> 页，共 <span id="page-count">1</span> 页</div>
+              <button class="btn btn-outline" style="height:36px;width:36px;padding:0" data-action="page" data-page="first" title="第一页">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m11 17-5-5 5-5"/><path d="m18 17-5-5 5-5"/></svg>
+              </button>
+              <button class="btn btn-outline" style="height:36px;width:36px;padding:0" data-action="page" data-page="prev" title="上一页">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+              </button>
+              <button class="btn btn-outline" style="height:36px;width:36px;padding:0" data-action="page" data-page="next" title="下一页">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+              </button>
+              <button class="btn btn-outline" style="height:36px;width:36px;padding:0" data-action="page" data-page="last" title="最后一页">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m13 17 5-5-5-5"/><path d="m6 17 5-5-5-5"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="view-detail" class="hidden"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 批量操作栏（底部居中深色悬浮 pill） ============ -->
+<div id="bulk-bar" class="bulk-bar hidden">
+  <button class="bulk-btn" data-action="bulk-select-all" title="全选/取消全选">
+    <span id="bulk-all-icon"></span>
+    <span class="bulk-divider"></span>
+    <span><span id="bulk-count">0</span> 已选择</span>
+  </button>
+  <button class="bulk-btn" data-action="bulk-tags" title="批量打标签">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></svg>
+    <span class="hidden md:inline">标签</span>
+  </button>
+  <button class="bulk-btn" data-action="bulk-refresh" title="刷新">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
+    <span class="hidden md:inline">刷新</span>
+  </button>
+  <button class="bulk-btn" data-action="bulk-delete" title="删除所选">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+    <span class="hidden md:inline">删除</span>
+  </button>
+  <button class="bulk-btn" data-action="bulk-clear" title="取消选择" style="padding:6px">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+  </button>
+</div>
+
+<!-- ============ 安装弹窗 ============ -->
+<div id="modal-install" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="flex items-center justify-between border-b px-5 py-4">
+      <h2 class="text-[15px] font-semibold">安装 Skill</h2>
+      <button class="btn btn-ghost" style="height:28px;width:28px" data-action="close-install">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      </button>
+    </div>
+    <div class="px-5 pt-4">
+      <div class="flex gap-1 rounded-lg bg-muted p-1">
+        <button id="tab-github" class="flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md text-[13px]" data-action="tab" data-tab="github">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 2-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.4 5.4 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg>
+          从 GitHub 安装
+        </button>
+        <button id="tab-upload" class="flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md text-[13px] text-muted-foreground" data-action="tab" data-tab="upload">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          上传压缩包
+        </button>
+      </div>
+    </div>
+
+    <div id="panel-github" class="px-5 py-4">
+      <label class="text-[13px] font-medium">GitHub 仓库地址</label>
+      <input id="github-url" class="input mt-1.5" placeholder="https://github.com/owner/repo 或 owner/repo">
+      <div class="mt-3 flex flex-col gap-1.5 rounded-md bg-muted/60 p-3 text-[12px] leading-relaxed text-muted-foreground">
+        <div class="flex gap-2"><span class="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-muted-foreground/60"></span>支持仓库根目录、<span class="font-mono">skills/</span> 子目录或任意下一级目录中的 SKILL.md</div>
+        <div class="flex gap-2"><span class="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-muted-foreground/60"></span>安装后保留 .git，可随时检测上游更新并按指纹还原版本</div>
+        <div class="flex gap-2"><span class="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-muted-foreground/60"></span>也可粘贴子目录链接，如 <span class="font-mono">github.com/owner/repo/tree/main/skills/xxx</span></div>
+      </div>
+      <button id="btn-install-github" class="btn btn-default mt-4 w-full" data-action="install-github">安装</button>
+    </div>
+
+    <div id="panel-upload" class="hidden px-5 py-4">
+      <div id="drop-zone" class="flex flex-col items-center justify-center rounded-lg border-2 border-dashed py-9 text-center transition hover:bg-muted/30 cursor-pointer" data-action="install-upload">
+        <div class="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        </div>
+        <p class="mt-3 text-[13px]">点击选择，或将 .zip 拖拽到此处</p>
+        <p class="mt-1 text-[12px] text-muted-foreground">解压后存放于 storage/skills/，可像书签一样打标签管理</p>
+      </div>
+      <div class="mt-3 flex flex-col gap-1.5 rounded-md bg-muted/60 p-3 text-[12px] leading-relaxed text-muted-foreground">
+        <div class="flex gap-2"><span class="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-muted-foreground/60"></span>压缩包根目录或一级子目录中需包含 SKILL.md</div>
+        <div class="flex gap-2"><span class="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-muted-foreground/60"></span>单个文件不超过 32MB，仅支持 .zip 格式</div>
+        <div class="flex gap-2"><span class="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-muted-foreground/60"></span>上传来源无上游更新检测，重复上传同名 skill 将覆盖</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toasts"></div>
+
+<script>
+// ================= 共享数据 =================
+const TAGS = [
+  { id: 1, name: '文档处理', color: '#3b82f6', t: '#1d4ed8', td: '#93c5fd', parent: 0 },
+  { id: 2, name: 'PDF', color: '#60a5fa', t: '#2563eb', td: '#bfdbfe', parent: 1 },
+  { id: 3, name: 'AI 工具', color: '#10b981', t: '#047857', td: '#6ee7b7', parent: 0 },
+  { id: 4, name: '效率', color: '#f59e0b', t: '#b45309', td: '#fcd34d', parent: 0 },
+  { id: 5, name: '写作', color: '#f43f5e', t: '#be123c', td: '#fda4af', parent: 0 },
+  { id: 6, name: '开发', color: '#8b5cf6', t: '#6d28d9', td: '#c4b5fd', parent: 0 },
+  { id: 7, name: '前端', color: '#0ea5e9', t: '#0369a1', td: '#7dd3fc', parent: 0 },
+  { id: 8, name: '设计', color: '#ec4899', t: '#be185d', td: '#f9a8d4', parent: 0 },
+];
+const TAG_MAP = Object.fromEntries(TAGS.map(t => [t.id, t]));
+
+const BOOKMARKS = [
+  { id: 101, title: 'Vite 官方文档', url: 'https://vitejs.dev', desc: '下一代前端构建工具，文档与插件生态。', tagIds: [7], createdAt: '2026-10-15 10:22', updatedAt: '2026-10-16 08:15' },
+  { id: 102, title: 'Tailwind CSS', url: 'https://tailwindcss.com', desc: '实用类优先的 CSS 框架，v4 已发布。', tagIds: [7, 8], createdAt: '2026-10-11 08:40', updatedAt: '2026-10-12 20:30' },
+  { id: 103, title: 'MDN Web Docs', url: 'https://developer.mozilla.org', desc: 'Web 技术权威参考文档。', tagIds: [7, 6], createdAt: '2026-10-08 21:15', updatedAt: '2026-10-08 21:15' },
+  { id: 104, title: 'DeepSeek 开放平台', url: 'https://platform.deepseek.com', desc: 'DeepSeek API 文档与计费说明。', tagIds: [3], createdAt: '2026-10-05 14:33', updatedAt: '2026-10-06 10:00' },
+  { id: 105, title: 'Excalidraw', url: 'https://excalidraw.com', desc: '手绘风格白板，画架构图很好用。', tagIds: [8, 4], createdAt: '2026-09-28 16:50', updatedAt: '2026-09-29 11:20' },
+  { id: 106, title: 'Hacker News', url: 'https://news.ycombinator.com', desc: '科技圈每日必逛。', tagIds: [4], createdAt: '2026-09-20 09:05', updatedAt: '2026-09-20 09:05' },
+  { id: 107, title: '待整理的链接', url: 'https://example.com/a', desc: '', tagIds: [], createdAt: '2026-09-18 12:00', updatedAt: '2026-09-18 12:00' },
+  { id: 108, title: '稍后阅读', url: 'https://example.com/b', desc: '', tagIds: [], createdAt: '2026-09-10 20:31', updatedAt: '2026-09-10 20:31' },
+  { id: 109, title: '临时收藏', url: 'https://example.com/c', desc: '', tagIds: [], createdAt: '2026-09-02 15:47', updatedAt: '2026-09-02 15:47' },
+  { id: 110, title: 'Figma', url: 'https://www.figma.com', desc: '协作式界面设计工具。', tagIds: [8], createdAt: '2026-08-30 11:20', updatedAt: '2026-08-30 11:20' },
+  { id: 111, title: 'Notion', url: 'https://www.notion.so', desc: '全能工作空间与数据库。', tagIds: [4], createdAt: '2026-08-15 09:40', updatedAt: '2026-09-01 14:22' },
+  { id: 112, title: 'GitHub', url: 'https://github.com', desc: '全球最大代码托管平台。', tagIds: [6, 7], createdAt: '2026-08-02 22:15', updatedAt: '2026-08-02 22:15' },
+  { id: 113, title: '少数派', url: 'https://sspai.com', desc: '效率工具与数字生活社区。', tagIds: [4], createdAt: '2026-07-20 08:30', updatedAt: '2026-07-21 19:05' },
+  { id: 114, title: 'Obsidian', url: 'https://obsidian.md', desc: '本地优先的知识管理工具。', tagIds: [4, 5], createdAt: '2026-07-08 16:45', updatedAt: '2026-07-09 09:12' },
+];
+
+const SKILLS = [
+  { id: 1, name: 'pdf-tool', desc: '解析 PDF 并提取文本与表格，支持扫描件 OCR，输出结构化 Markdown。',
+    source: 'github', url: 'github.com/demo/pdf-tool', sha: 'a1b2c3d', newSha: 'f6e5d4c', hasUpdate: true,
+    tagIds: [1, 2, 3], installedAt: '2026-10-18 21:04', updatedAt: '2026-10-19 09:30',
+    files: [{ name: 'SKILL.md', type: 'file' }, { name: 'scripts/', type: 'dir', count: 3 }, { name: 'references/', type: 'dir', count: 2 }],
+    content: `<h1>PDF 解析工具</h1><p>将 PDF 文档转换为结构化 Markdown，保留标题层级、表格与列表格式。适用于论文、合同、报告等版式规范的文档。</p><h2>使用说明</h2><ul><li>输入 PDF 文件路径，自动检测文本层；无文本层时启用 OCR</li><li>表格输出为 Markdown 表格，合并单元格展开为多行</li><li>扫描件自动进行纠偏与去噪，识别语言默认中英混排</li></ul><h2>调用示例</h2><pre><code>python scripts/extract.py input.pdf --ocr --lang chi_sim+eng</code></pre><h2>注意事项</h2><ul><li>单文件不超过 <strong>200MB</strong>，超大文档请先拆分</li><li>加密 PDF 需先移除密码保护</li><li>OCR 依赖已打包在 <code>scripts/</code> 中，无需额外安装</li></ul>` },
+  { id: 2, name: 'legal-review', desc: '合同审查与风险点标注，按条款输出修订建议与谈判要点。',
+    source: 'github', url: 'github.com/demo/legal-skills', sha: '9f8e7d6', hasUpdate: false,
+    tagIds: [5, 6], installedAt: '2026-10-12 15:30', updatedAt: '2026-10-13 14:00',
+    files: [{ name: 'SKILL.md', type: 'file' }, { name: 'templates/', type: 'dir', count: 4 }],
+    content: `<h1>合同审查助手</h1><p>对合同全文进行条款级审查，识别权责失衡、违约条款缺失、争议解决约定不明等风险，并给出修订建议。</p><h2>审查维度</h2><ul><li>主体资格与签署权限</li><li>付款条件与违约责任</li><li>知识产权归属</li><li>保密与竞业限制</li><li>争议解决方式与管辖</li></ul><h2>输出格式</h2><p>按「条款位置 → 风险等级 → 问题描述 → 修订建议」四段式输出，风险等级分为<strong>高 / 中 / 低</strong>三档。</p>` },
+  { id: 3, name: 'my-writing-style', desc: '我的个人写作风格指南，供 AI 模仿行文节奏与用词习惯。',
+    source: 'upload', url: '', sha: 'e4d5c6b', hasUpdate: false,
+    tagIds: [5], installedAt: '2026-10-20 09:41', updatedAt: '2026-10-20 09:41',
+    files: [{ name: 'SKILL.md', type: 'file' }, { name: 'samples/', type: 'dir', count: 6 }],
+    content: `<h1>个人写作风格</h1><p>沉淀本人的行文习惯，供 AI 在代笔时模仿，目标是<strong>去 AI 味</strong>。</p><h2>风格要点</h2><ul><li>句子长短交错，避免均匀节奏</li><li>少用"首先/其次/总之"等连接词</li><li>比喻优先用生活化场景，不用书面典故</li><li>观点直接给出，不堆铺垫</li></ul><h2>禁忌</h2><ul><li>禁止"总而言之""值得一提的是"等套话</li><li>禁止排比句连续超过两组</li></ul>` },
+  { id: 4, name: 'code-reviewer', desc: '代码审查清单，覆盖安全、性能与可读性维度，输出分级问题列表。',
+    source: 'github', url: 'github.com/demo/code-reviewer', sha: '3c2b1a0', hasUpdate: false,
+    tagIds: [6], installedAt: '2026-09-30 11:20', updatedAt: '2026-10-02 16:40',
+    files: [{ name: 'SKILL.md', type: 'file' }, { name: 'checklists/', type: 'dir', count: 3 }],
+    content: `<h1>代码审查清单</h1><p>按语言与框架加载对应检查清单，对 diff 进行逐项审查。</p><h2>检查维度</h2><ul><li><strong>安全</strong>：注入、越权、敏感信息硬编码</li><li><strong>性能</strong>：N+1 查询、不必要的全量加载、阻塞调用</li><li><strong>可读性</strong>：命名、函数长度、注释密度</li><li><strong>测试</strong>：边界条件覆盖、mock 合理性</li></ul><h2>输出</h2><p>问题按 P0（必须修）/ P1（建议修）/ P2（可选）分级，附具体行号与修改示例。</p>` },
+  { id: 5, name: 'meeting-notes', desc: '会议纪要结构化模板与整理流程，自动提取决议与待办。',
+    source: 'upload', url: '', sha: '7a6b5c4', hasUpdate: false,
+    tagIds: [4], installedAt: '2026-09-15 14:05', updatedAt: '2026-09-15 14:05',
+    files: [{ name: 'SKILL.md', type: 'file' }, { name: 'templates/', type: 'dir', count: 2 }],
+    content: `<h1>会议纪要整理</h1><p>将零散的会议记录整理为结构化纪要，提取决议、待办与负责人。</p><h2>模板结构</h2><ul><li>会议主题与时间</li><li>参会人</li><li>议题与讨论要点</li><li>决议（含表决情况）</li><li>待办（负责人 + 截止时间）</li></ul><h2>整理原则</h2><p>待办必须落到人；无明确负责人的条目标记为「待指派」并高亮提醒。</p>` },
+  { id: 6, name: 'translate-pro', desc: '中英互译，保留原文格式，支持自定义术语表与风格约束。',
+    source: 'github', url: 'github.com/demo/translate-pro', sha: 'b2c3d4e', newSha: 'c3d4e5f', hasUpdate: true,
+    tagIds: [4, 1], installedAt: '2026-08-22 19:47', updatedAt: '2026-08-25 10:15',
+    files: [{ name: 'SKILL.md', type: 'file' }, { name: 'glossary/', type: 'dir', count: 5 }],
+    content: `<h1>专业翻译</h1><p>中英互译，保留 Markdown 格式与代码块，支持术语表约束。</p><h2>使用方式</h2><ul><li>默认风格：准确、通顺、不增不减</li><li>术语表：<code>glossary/</code> 中的词条优先于通用译法</li><li>代码块与行内代码不翻译</li></ul><h2>示例</h2><pre><code>translate-pro "部署文档.md" --glossary tech --style formal</code></pre>` },
+  { id: 7, name: 'data-viz', desc: '根据数据生成图表配置与可视化建议，支持 ECharts 与 Chart.js。',
+    source: 'github', url: 'github.com/demo/data-viz', sha: '5d4c3b2', hasUpdate: false,
+    tagIds: [1], installedAt: '2026-07-30 16:20', updatedAt: '2026-07-30 16:20',
+    files: [{ name: 'SKILL.md', type: 'file' }, { name: 'templates/', type: 'dir', count: 6 }],
+    content: `<h1>数据可视化</h1><p>根据数据特征推荐图表类型，生成 ECharts / Chart.js 配置。</p><h2>能力</h2><ul><li>自动识别数据维度与度量</li><li>按用途推荐图表（对比 / 趋势 / 占比 / 分布）</li><li>输出可直接运行的配置代码</li></ul>` },
+  { id: 8, name: 'sql-helper', desc: 'SQL 编写、优化与执行计划解读，覆盖 MySQL 与 PostgreSQL。',
+    source: 'github', url: 'github.com/demo/sql-helper', sha: '8e7d6c5', hasUpdate: false,
+    tagIds: [6], installedAt: '2026-07-12 10:05', updatedAt: '2026-07-14 09:30',
+    files: [{ name: 'SKILL.md', type: 'file' }],
+    content: `<h1>SQL 助手</h1><p>编写与优化 SQL，解读执行计划。</p><h2>能力</h2><ul><li>慢查询定位与索引建议</li><li>执行计划关键指标解读</li><li>方言差异提示（MySQL / PostgreSQL）</li></ul>` },
+  { id: 9, name: 'email-drafter', desc: '商务邮件起草与润色，控制语气与长度，中英双语。',
+    source: 'upload', url: '', sha: '2b3c4d5', hasUpdate: false,
+    tagIds: [5, 4], installedAt: '2026-06-28 14:44', updatedAt: '2026-06-28 14:44',
+    files: [{ name: 'SKILL.md', type: 'file' }, { name: 'templates/', type: 'dir', count: 4 }],
+    content: `<h1>商务邮件</h1><p>起草与润色商务邮件，控制语气正式程度。</p><h2>参数</h2><ul><li>语气：正式 / 中性 / 亲切</li><li>长度：简短 / 标准 / 详细</li><li>语言：中文 / 英文</li></ul>` },
+  { id: 10, name: 'ppt-outline', desc: 'PPT 大纲结构化生成，按受众调整详略与叙事线。',
+    source: 'github', url: 'github.com/demo/ppt-outline', sha: '6f5e4d3', hasUpdate: false,
+    tagIds: [1, 4], installedAt: '2026-06-10 09:12', updatedAt: '2026-06-11 15:20',
+    files: [{ name: 'SKILL.md', type: 'file' }],
+    content: `<h1>PPT 大纲</h1><p>生成结构化演示大纲。</p><h2>流程</h2><ul><li>明确主题与受众</li><li>生成叙事主线</li><li>逐页展开要点与配图建议</li></ul>` },
+  { id: 11, name: 'regex-buddy', desc: '正则表达式生成、解释与测试用例构造。',
+    source: 'upload', url: '', sha: '9a8b7c6', hasUpdate: false,
+    tagIds: [6], installedAt: '2026-05-22 20:18', updatedAt: '2026-05-22 20:18',
+    files: [{ name: 'SKILL.md', type: 'file' }],
+    content: `<h1>正则助手</h1><p>生成、解释正则表达式。</p><h2>能力</h2><ul><li>自然语言 → 正则</li><li>正则 → 分段解释</li><li>边界用例构造</li></ul>` },
+  { id: 12, name: 'weekly-report', desc: '周报模板与自动汇总，从提交记录与待办提取要点。',
+    source: 'github', url: 'github.com/demo/weekly-report', sha: '3e4d5c6', hasUpdate: false,
+    tagIds: [4, 5], installedAt: '2026-05-05 18:00', updatedAt: '2026-05-06 10:11',
+    files: [{ name: 'SKILL.md', type: 'file' }, { name: 'templates/', type: 'dir', count: 2 }],
+    content: `<h1>周报生成</h1><p>从工作记录汇总周报。</p><h2>输入</h2><ul><li>提交记录 / 待办清单</li><li>口头描述的一周工作</li></ul><h2>输出</h2><p>按「完成 / 进行中 / 风险」三段式汇总。</p>` },
+];
+
+// ================= 模块配置（未来加密码模块只需在此追加） =================
+const MODULES = {
+  bookmarks: {
+    label: '标签', items: () => BOOKMARKS, noun: '项目',
+    titleOf: i => i.title, dateOf: i => i.createdAt, updatedOf: i => i.updatedAt, dateLabel: '创建时间',
+    defaultSort: 'created-desc', addLabel: '添加',
+    fields: [
+      { key: 'url', label: '链接' }, { key: 'tags', label: '标签' },
+      { key: 'desc', label: '描述' }, { key: 'date', label: '创建时间' },
+    ],
+    sorts: [
+      { key: 'created-desc', label: '创建时间（最新优先）' }, { key: 'created-asc', label: '创建时间（最早优先）' },
+      { key: 'title-asc', label: '标题（A → Z）' }, { key: 'title-desc', label: '标题（Z → A）' },
+      { key: 'updated-desc', label: '更新时间（最新优先）' },
+    ],
+  },
+  skills: {
+    label: 'Skill', items: () => SKILLS, noun: 'Skill',
+    titleOf: i => i.name, dateOf: i => i.installedAt, updatedOf: i => i.updatedAt, dateLabel: '安装时间',
+    defaultSort: 'installed-desc', addLabel: '安装 Skill',
+    fields: [
+      { key: 'desc', label: '描述' }, { key: 'tags', label: '标签' },
+      { key: 'date', label: '安装时间' }, { key: 'sha', label: '指纹' },
+    ],
+    sorts: [
+      { key: 'installed-desc', label: '安装时间（最新优先）' }, { key: 'installed-asc', label: '安装时间（最早优先）' },
+      { key: 'name-asc', label: '名称（A → Z）' }, { key: 'name-desc', label: '名称（Z → A）' },
+      { key: 'updated-desc', label: '更新时间（最新优先）' },
+    ],
+  },
+};
+
+// ================= 状态 =================
+const state = {
+  module: 'skills',
+  view: 'list',
+  theme: 'light',
+  layout: 'cards',
+  sort: { bookmarks: 'created-desc', skills: 'installed-desc' },
+  search: '',
+  tagFilter: null,          // null=全部 | 'none'=未标记 | tagId
+  selectedId: null,
+  selected: new Set(),      // 多选
+  pageSize: 25,
+  pageIndex: 0,
+  fields: {
+    bookmarks: { url: true, tags: true, desc: true, date: true },
+    skills: { desc: true, tags: true, date: true, sha: true },
+  },
+  showCounts: true,
+  includeNested: true,
+  sidebarOpen: true,
+  expandedTags: new Set([1]),
+};
+
+// ================= 工具 =================
+const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+const M = () => MODULES[state.module];
+const randSha = () => Math.random().toString(16).slice(2, 9);
+const nowStr = () => { const d = new Date(); const p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; };
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const isDark = () => document.documentElement.classList.contains('dark');
+
+function toast(msg, type = 'info') {
+  const icons = {
+    success: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
+    error: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>',
+    info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>',
+  };
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.innerHTML = icons[type] + `<span>${esc(msg)}</span>`;
+  $('#toasts').appendChild(el);
+  setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 260); }, 2800);
+}
+function closeAllMenus() { $$('.dd-menu').forEach(m => { m.classList.add('hidden'); m.style.position = ''; m.style.left = ''; m.style.top = ''; }); $$('[data-dd]').forEach(b => b.removeAttribute('data-open')); }
+
+// ================= 主题 =================
+function applyTheme() {
+  const dark = state.theme === 'dark' || (state.theme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+  document.documentElement.classList.toggle('dark', dark);
+  $$('.theme-icon').forEach(i => i.dataset.active = (i.dataset.theme === state.theme));
+}
+function cycleTheme() {
+  state.theme = { light: 'dark', dark: 'system', system: 'light' }[state.theme];
+  applyTheme();
+  renderAll();
+  if (state.view === 'detail' && state.selectedId) renderDetail(state.selectedId);
+  toast(`主题：${ { light: '浅色', dark: '深色', system: '跟随系统' }[state.theme] }`);
+}
+
+// ================= 标签徽章 =================
+function tagChip(t, clickable = true) {
+  const style = `background:color-mix(in srgb, ${t.color} 13%, transparent); border-color:color-mix(in srgb, ${t.color} 38%, transparent); color:${isDark() ? t.td : t.t}`;
+  return `<span class="tag-badge" ${clickable ? `data-action="tag-filter" data-tagid="${t.id}"` : ''} style="${style}"><span class="tag-dot" style="background:${t.color}"></span>${esc(t.name)}</span>`;
+}
+
+// ================= 侧边栏 =================
+function tagCount(tagId) {
+  const items = M().items();
+  const childIds = TAGS.filter(t => t.parent === tagId).map(t => t.id);
+  const ids = state.includeNested ? [tagId, ...childIds] : [tagId];
+  return items.filter(i => i.tagIds.some(t => ids.includes(t))).length;
+}
+function tagTreeHTML() {
+  const q = ($('#tag-search') ? $('#tag-search').value : '').toLowerCase();
+  const tagMatches = (t, query) => t.name.toLowerCase().includes(query) || TAGS.some(c => c.parent === t.id && tagMatches(c, query));
+  const build = (parentId, depth) => TAGS.filter(t => t.parent === parentId && (!q || tagMatches(t, q)))
+    .map(t => {
+      const count = tagCount(t.id);
+      const active = state.tagFilter === t.id;
+      const children = TAGS.filter(c => c.parent === t.id);
+      const hasChildren = children.length > 0;
+      const expanded = state.expandedTags.has(t.id) || (!!q && tagMatches(t, q));
+      const row = `<div class="relative">
+        <button class="tag-row ${active ? 'active' : ''}" data-action="tag-filter" data-tagid="${t.id}" style="${hasChildren ? '' : 'padding-left:32px;'}">
+          ${hasChildren ? `<span class="tag-chevron ${expanded ? 'open' : ''}" data-action="tag-expand" data-tagid="${t.id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span>` : ''}
+          <span class="tag-dot" style="background:${t.color}"></span>
+          <span class="tag-title">${esc(t.name)}</span>
+          ${state.showCounts ? `<span class="tag-count">${count}</span>` : ''}
+        </button>
+        <div class="relative">
+          <button class="tag-more" data-dd="tag-${t.id}" title="更多">
+            <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
+          </button>
+          <div class="dd-menu hidden right-0 top-7 w-36" data-menu="tag-${t.id}">
+            <button class="dd-item" data-action="tag-edit" data-tagid="${t.id}">编辑标签</button>
+            <button class="dd-item" data-action="tag-pin" data-tagid="${t.id}">置顶标签</button>
+            <div class="dd-sep"></div>
+            <button class="dd-item danger" data-action="tag-delete" data-tagid="${t.id}">删除</button>
+          </div>
+        </div>
+      </div>`;
+      const childHTML = hasChildren && expanded
+        ? `<div class="tag-children">${build(t.id, depth + 1)}</div>`
+        : '';
+      return row + childHTML;
+    }).join('');
+  return build(0, 0);
+}
+function renderSidebarSection() {
+  const sectionLabel = state.module === 'bookmarks' ? '标签' : '分类';
+  $('#sidebar-section').innerHTML = `
+    <div class="mb-1 flex items-center justify-end gap-1 pr-1">
+      <span class="mr-auto px-3 text-xs font-medium text-muted-foreground">${sectionLabel}</span>
+      <button class="side-action" data-action="tag-search-toggle" title="筛选${sectionLabel}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      </button>
+      <div class="relative">
+        <button class="side-action" data-dd="tags-more" title="更多">
+          <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
+        </button>
+        <div class="dd-menu hidden right-0 top-8" data-menu="tags-more">
+          <button class="dd-item" data-action="toggle-nested"><span style="width:14px;display:inline-flex;justify-content:center" id="chk-nested">✓</span>包含嵌套${sectionLabel}的${M().noun}</button>
+          <button class="dd-item" data-action="toggle-counts"><span style="width:14px;display:inline-flex;justify-content:center" id="chk-counts">✓</span>显示数量</button>
+        </div>
+      </div>
+    </div>
+    <div id="tag-search-wrap" class="hidden mb-2 px-3">
+      <div class="relative">
+        <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input id="tag-search" class="input h-8 pl-7 pr-2 text-xs" placeholder="筛选${sectionLabel}...">
+      </div>
+    </div>
+    <div id="tag-tree" class="flex flex-col px-1">${tagTreeHTML()}</div>`;
+}
+function renderModuleNav() {
+  $$('.module-nav').forEach(b => b.dataset.active = (b.dataset.module === state.module));
+  $('#count-bookmarks').textContent = BOOKMARKS.length;
+  $('#count-skills').textContent = SKILLS.length;
+}
+
+// ================= 统一卡片组件 =================
+function sourceBadge(s) {
+  return s.source === 'github'
+    ? `<span class="badge badge-secondary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 2-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.4 5.4 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg>GitHub</span>`
+    : `<span class="badge badge-secondary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>上传</span>`;
+}
+function cardMenu(item) {
+  const isSkill = state.module === 'skills';
+  const rows = isSkill ? [
+    { a: 'card-open', label: '查看详情', icon: '<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>' },
+    { a: 'menu-check', label: '检查更新', icon: '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/>' },
+    { a: 'menu-export', label: '导出', icon: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>' },
+    { sep: true },
+    { a: 'menu-delete', label: '删除', danger: true, icon: '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>' },
+  ] : [
+    { a: 'bookmark-edit', label: '编辑', icon: '<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/>' },
+    { a: 'bookmark-copy', label: '复制链接', icon: '<rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>' },
+    { sep: true },
+    { a: 'bookmark-delete', label: '删除', danger: true, icon: '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>' },
+  ];
+  return `<div class="flex items-center gap-1">
+    <button class="card-act expand onhover-visible" data-action="${isSkill ? 'card-open' : 'bookmark-edit'}" data-id="${item.id}" title="${isSkill ? '查看详情' : '编辑'}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+    </button>
+    <div class="relative">
+      <button class="card-act dots onhover-visible" data-dd="card-${item.id}">
+        <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
+      </button>
+      <div class="dd-menu hidden right-0 top-9" data-menu="card-${item.id}">
+        ${rows.map(r => r.sep ? '<div class="dd-sep"></div>' : `<button class="dd-item ${r.danger ? 'danger' : ''}" data-action="${r.a}" data-id="${item.id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${r.icon}</svg>${r.label}</button>`).join('')}
+      </div>
+    </div>
+  </div>`;
+}
+function cardCheck(item, selected, mode = 'card') {
+  const pos = mode === 'list' ? 'top:50%;left:6px;transform:translateY(-50%);' : '';
+  return `<button class="card-check ${selected ? 'checked' : ''}" style="${pos}" data-action="toggle-select" data-id="${item.id}" title="选择">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+  </button>`;
+}
+
+/* 统一卡片：书签与 Skill 共用；各区域位置固定 */
+function cardHTML(item) {
+  const isSkill = state.module === 'skills';
+  const f = state.fields[state.module];
+  const m = M();
+  const title = m.titleOf(item);
+  const dateLabel = m.dateLabel;
+  const dateVal = m.dateOf(item).slice(0, 10);
+  const updatedVal = m.updatedOf(item).slice(0, 10);
+  const badges = isSkill ? sourceBadge(item) + (item.hasUpdate ? '<span class="badge badge-update">有更新</span>' : '') : '';
+  const selected = state.selected.has(item.id);
+  const urlLine = !isSkill && f.url ? `<div class="mt-0.5 truncate text-sm text-muted-foreground underline decoration-border">${esc(item.url)}</div>` : '';
+  const tags = f.tags ? item.tagIds.map(t => TAG_MAP[t] ? tagChip(TAG_MAP[t]) : '').join('') : '';
+  let footerLeft = '', footerRight = '';
+  if (isSkill) {
+    if (f.sha) footerLeft = `<span class="font-mono">${item.sha}</span>`;
+    if (f.date) footerRight = `<span>${dateLabel}: ${dateVal}</span>`;
+  } else if (f.date) {
+    footerLeft = `<span>${dateLabel}: ${dateVal}</span>`;
+    footerRight = `<span>修改时间: ${updatedVal}</span>`;
+  }
+  return `<div class="u-card onhover-container ${selected ? 'selected' : ''}" data-action="card-open" data-id="${item.id}">
+    ${cardCheck(item, selected)}
+    <div class="absolute right-3 top-3 flex items-center gap-1">${cardMenu(item)}</div>
+    <div class="min-w-0">
+      <div class="flex flex-wrap items-center gap-1.5 pr-20">
+        <h4 class="truncate font-semibold tracking-tight">${esc(title)}</h4>
+        ${badges}
+      </div>
+      ${urlLine}
+    </div>
+    <div class="min-h-[3rem]">${f.desc && item.desc ? `<p class="line-clamp-2 text-sm leading-6 text-muted-foreground">${esc(item.desc)}</p>` : ''}</div>
+    <div class="flex min-h-[26px] flex-wrap items-center gap-1">${tags}</div>
+    <div class="mt-auto flex items-center justify-between pt-1 text-[11px] text-muted-foreground/70">
+      <span>${footerLeft}</span><span>${footerRight}</span>
+    </div>
+  </div>`;
+}
+
+// ================= 列表渲染 =================
+function filteredItems() {
+  let list = [...M().items()];
+  if (state.tagFilter === 'none') list = list.filter(i => !i.tagIds.length);
+  else if (state.tagFilter !== null) {
+    const ids = state.includeNested ? [state.tagFilter, ...TAGS.filter(t => t.parent === state.tagFilter).map(t => t.id)] : [state.tagFilter];
+    list = list.filter(i => i.tagIds.some(t => ids.includes(t)));
+  }
+  if (state.search) {
+    const q = state.search.toLowerCase();
+    list = list.filter(i => {
+      const title = M().titleOf(i).toLowerCase();
+      const url = (i.url || '').toLowerCase();
+      return title.includes(q) || url.includes(q) || (i.desc || '').toLowerCase().includes(q) || i.tagIds.some(t => TAG_MAP[t] && TAG_MAP[t].name.toLowerCase().includes(q));
+    });
+  }
+  const [key, dir] = state.sort[state.module].split('-');
+  list.sort((a, b) => {
+    let r = 0;
+    if (key === 'name' || key === 'title') r = M().titleOf(a).localeCompare(M().titleOf(b));
+    else r = M().dateOf(a).localeCompare(M().dateOf(b));
+    return dir === 'asc' ? r : -r;
+  });
+  return list;
+}
+function pageItems(list) {
+  const start = state.pageIndex * state.pageSize;
+  return list.slice(start, start + state.pageSize);
+}
+function updateBulkBar() {
+  const n = state.selected.size;
+  $('#bulk-bar').classList.toggle('hidden', n === 0);
+  $('#bulk-count').textContent = n;
+  $('#list-container').classList.toggle('has-selection', n > 0);
+  const pageList = pageItems(filteredItems());
+  const allSel = pageList.length > 0 && pageList.every(i => state.selected.has(i.id));
+  $('#bulk-all-icon').innerHTML = allSel
+    ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="m9 12 2 2 4-4"/></svg>'
+    : (n > 0
+      ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 12h8"/></svg>'
+      : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>');
+}
+
+function renderList() {
+  const all = filteredItems();
+  const total = all.length;
+  const pageCount = Math.max(1, Math.ceil(total / state.pageSize));
+  if (state.pageIndex > pageCount - 1) state.pageIndex = pageCount - 1;
+  const list = pageItems(all);
+  const m = M();
+  const container = $('#list-container');
+  const empty = $('#empty-state');
+  empty.classList.toggle('hidden', total > 0);
+  container.classList.toggle('hidden', total === 0);
+  $('#pagination').classList.toggle('hidden', total === 0);
+  empty.textContent = state.tagFilter !== null && state.tagFilter !== 'none' ? `该标签下暂无${m.noun}。` : (state.tagFilter === 'none' ? `没有未标记的${m.noun}。` : `暂无${m.noun}。`);
+
+  if (state.layout === 'cards') {
+    container.innerHTML = `<div class="m-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">${list.map(cardHTML).join('')}</div>`;
+  } else if (state.layout === 'list') {
+    const isSkillL = state.module === 'skills';
+    const fL = state.fields[state.module];
+    container.innerHTML = `<div class="mx-2 flex flex-col divide-y">${list.map(item => {
+      const selected = state.selected.has(item.id);
+      const fields = [`<h4 class="font-semibold tracking-tight">${esc(m.titleOf(item))}${isSkillL && item.hasUpdate ? ' <span class="badge badge-update">有更新</span>' : ''}</h4>`];
+      if (isSkillL) fields.push(`<div class="flex items-center gap-1.5">${sourceBadge(item)}</div>`);
+      else if (fL.url) fields.push(`<div class="text-sm text-muted-foreground underline decoration-border">${esc(item.url)}</div>`);
+      if (fL.tags && item.tagIds.length) fields.push(`<div class="flex flex-wrap gap-1 py-1">${item.tagIds.map(t => TAG_MAP[t] ? tagChip(TAG_MAP[t]) : '').join('')}</div>`);
+      if (fL.desc && item.desc) fields.push(`<div class="text-sm leading-6 text-muted-foreground">${esc(item.desc)}</div>`);
+      if (fL.date) fields.push(`<div class="text-xs text-muted-foreground">${m.dateLabel}: ${m.dateOf(item)}</div>`);
+      return `<div class="onhover-container relative">
+        <div class="flex flex-row gap-4 px-8 py-6 ${selected ? 'bg-muted/50' : ''}" data-action="card-open" data-id="${item.id}">
+          <div class="flex flex-col items-start gap-1.5 text-left" style="flex:2 1 0%;min-width:0">${fields.join('')}</div>
+        </div>
+        ${cardCheck(item, selected, 'list')}
+        <div class="absolute right-2 top-3 flex items-center gap-1">${cardMenu(item)}</div>
+      </div>`;
+    }).join('')}</div>`;
+  } else {
+    const isSkill = state.module === 'skills';
+    const f = state.fields[state.module];
+    container.innerHTML = `<div class="m-4 overflow-x-auto rounded-lg border bg-card"><table class="w-full text-left text-[13px]">
+      <thead><tr class="border-b text-xs text-muted-foreground">
+        <th class="px-4 py-2.5 font-medium">${isSkill ? '名称' : '标题'}</th>
+        <th class="px-4 py-2.5 font-medium">${isSkill ? '来源' : '链接'}</th>
+        ${f.tags ? '<th class="px-4 py-2.5 font-medium">标签</th>' : ''}
+        ${isSkill && f.sha ? '<th class="px-4 py-2.5 font-medium">指纹</th>' : ''}
+        ${f.date ? `<th class="px-4 py-2.5 font-medium">${m.dateLabel}</th>` : ''}
+        <th class="px-4 py-2.5"></th>
+      </tr></thead>
+      <tbody>${list.map(item => `<tr class="border-b last:border-0 hover:bg-accent cursor-pointer" data-action="card-open" data-id="${item.id}">
+        <td class="px-4 py-2.5 font-medium">${esc(m.titleOf(item))}${isSkill && item.hasUpdate ? ' <span class="badge badge-update">有更新</span>' : ''}</td>
+        <td class="px-4 py-2.5 text-muted-foreground">${isSkill ? (item.url || '本地上传') : esc(item.url)}</td>
+        ${f.tags ? `<td class="px-4 py-2.5"><div class="flex gap-1">${item.tagIds.map(t => TAG_MAP[t] ? tagChip(TAG_MAP[t]) : '').join('')}</div></td>` : ''}
+        ${isSkill && f.sha ? `<td class="px-4 py-2.5 font-mono text-[11px] text-muted-foreground">${item.sha}</td>` : ''}
+        ${f.date ? `<td class="px-4 py-2.5 text-muted-foreground">${m.dateOf(item)}</td>` : ''}
+        <td class="px-2 py-2.5">${cardMenu(item)}</td>
+      </tr>`).join('')}</tbody></table></div>`;
+  }
+
+  // 分页信息
+  $('#page-total').textContent = total;
+  $('#page-noun').textContent = m.noun === '项目' ? '项目' : ' Skill';
+  $('#page-noun2').textContent = m.noun === '项目' ? '项目' : '条';
+  $('#page-cur').textContent = state.pageIndex + 1;
+  $('#page-count').textContent = pageCount;
+  $('#pagination').querySelector('[data-page="first"]').disabled = state.pageIndex === 0;
+  $('#pagination').querySelector('[data-page="prev"]').disabled = state.pageIndex === 0;
+  $('#pagination').querySelector('[data-page="next"]').disabled = state.pageIndex >= pageCount - 1;
+  $('#pagination').querySelector('[data-page="last"]').disabled = state.pageIndex >= pageCount - 1;
+
+  updateBulkBar();
+}
+
+// ================= 详情渲染（Skill） =================
+function renderDetail(id) {
+  const s = SKILLS.find(x => x.id === id);
+  if (!s) return;
+  state.selectedId = id;
+  $('#view-detail').innerHTML = `
+    <div class="p-5">
+      <button class="mb-4 flex items-center gap-1.5 text-[13px] text-muted-foreground hover:text-foreground" data-action="detail-back">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+        返回 Skill 列表
+      </button>
+      <div class="rounded-lg border bg-card p-5">
+        <div class="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <div class="flex flex-wrap items-center gap-2">
+              <h1 class="text-lg font-semibold">${esc(s.name)}</h1>
+              ${sourceBadge(s)}
+              ${s.hasUpdate ? '<span class="badge badge-update">有更新</span>' : ''}
+            </div>
+            <p class="mt-2 max-w-2xl text-[13px] leading-relaxed text-muted-foreground">${esc(s.desc)}</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <button class="btn btn-outline btn-sm" data-action="detail-check">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
+              检查更新
+            </button>
+            <button class="btn btn-default btn-sm" data-action="detail-update">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.22-8.56"/><path d="M22 4v5h-5"/></svg>
+              更新到最新
+            </button>
+            <button class="btn btn-outline btn-sm" data-action="detail-export">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              导出
+            </button>
+            <button class="btn btn-destructive btn-sm" data-action="detail-delete">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              删除
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div class="rounded-lg border bg-card p-5 lg:col-span-2">
+          <div class="mb-3 flex items-center gap-2 border-b pb-3">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-muted-foreground"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v5h6"/></svg>
+            <span class="text-[13px] font-medium">SKILL.md</span>
+            <span class="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">只读预览</span>
+          </div>
+          <div class="prose max-w-none">${s.content}</div>
+        </div>
+        <div class="flex flex-col gap-4">
+          <div class="rounded-lg border bg-card p-4">
+            <div class="mb-3 text-[13px] font-medium">基本信息</div>
+            <div class="flex flex-col gap-2.5 text-[13px]">
+              ${s.url ? `<div class="flex justify-between gap-3"><span class="text-muted-foreground">来源</span><span class="truncate font-mono text-[12px]">${esc(s.url)}</span></div>` : '<div class="flex justify-between gap-3"><span class="text-muted-foreground">来源</span><span class="text-[12px]">本地上传</span></div>'}
+              <div class="flex justify-between gap-3"><span class="text-muted-foreground">指纹</span><span class="font-mono text-[12px]">${s.sha}</span></div>
+              <div class="flex justify-between gap-3"><span class="text-muted-foreground">安装时间</span><span class="text-[12px]">${s.installedAt}</span></div>
+              <div class="flex justify-between gap-3"><span class="text-muted-foreground">最近检查</span><span class="text-[12px]">${nowStr().slice(0, 10)}</span></div>
+            </div>
+          </div>
+          <div class="rounded-lg border bg-card p-4">
+            <div class="mb-3 text-[13px] font-medium">标签</div>
+            <div class="flex flex-wrap gap-1.5">
+              ${s.tagIds.map(t => TAG_MAP[t] ? `<span class="inline-flex items-center gap-1 rounded-md py-1 pl-2 pr-1.5 text-[12px] font-medium" style="background:color-mix(in srgb, ${TAG_MAP[t].color} 13%, transparent); border:1px solid color-mix(in srgb, ${TAG_MAP[t].color} 38%, transparent); color:${isDark() ? TAG_MAP[t].td : TAG_MAP[t].t}"><span class="tag-dot" style="background:${TAG_MAP[t].color}"></span>${esc(TAG_MAP[t].name)}<button class="opacity-60 hover:opacity-100" data-action="remove-tag" data-skillid="${s.id}" data-tagid="${t}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>` : '').join('')}
+              <div class="relative">
+                <button class="inline-flex items-center gap-1 rounded-md border border-dashed px-2 py-1 text-[12px] text-muted-foreground hover:bg-accent" data-dd="add-tag">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+                  添加标签
+                </button>
+                <div class="dd-menu hidden left-0 top-8 w-48" data-menu="add-tag">
+                  <div class="p-1">
+                    <input id="new-tag-input" class="input h-8 text-xs" placeholder="输入标签名，回车添加">
+                  </div>
+                  <div class="dd-sep"></div>
+                  ${TAGS.map(t => `<button class="dd-item" data-action="add-tag" data-skillid="${s.id}" data-tagid="${t.id}">
+                    <span class="tag-dot" style="background:${t.color}"></span>${esc(t.name)}
+                    ${s.tagIds.includes(t.id) ? '<svg class="ml-auto" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>' : ''}
+                  </button>`).join('')}
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="rounded-lg border bg-card p-4">
+            <div class="mb-3 text-[13px] font-medium">文件</div>
+            <div class="flex flex-col gap-1 text-[13px]">
+              ${s.files.map(f => `<button class="flex items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-accent" data-action="file-preview" data-name="${esc(f.name)}">
+                ${f.type === 'dir'
+                  ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-muted-foreground"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>'
+                  : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-muted-foreground"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v5h6"/></svg>'}
+                <span class="font-mono text-[12px]">${esc(f.name)}</span>
+                ${f.count ? `<span class="ml-auto text-[11px] text-muted-foreground">${f.count} 个文件</span>` : ''}
+              </button>`).join('')}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+// ================= 视图与工具栏渲染 =================
+function showView(v) {
+  state.view = v;
+  $('#view-list').classList.toggle('hidden', v !== 'list');
+  $('#view-detail').classList.toggle('hidden', v !== 'detail');
+}
+function renderSortMenu() {
+  const opts = M().sorts;
+  const cur = state.sort[state.module];
+  $('#sort-menu').innerHTML = opts.map(o => `<button class="dd-item" data-action="sort" data-sort="${o.key}">${o.label}${o.key === cur ? '<svg class="ml-auto" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>' : ''}</button>`).join('');
+  const curOpt = opts.find(o => o.key === cur);
+  $('#sort-label').textContent = curOpt ? curOpt.label.split('（')[0] : '';
+}
+function renderFieldsMenu() {
+  $('#fields-menu').innerHTML = M().fields.map(fd => `<button class="dd-item" data-action="field" data-field="${fd.key}"><span style="width:14px;display:inline-flex;justify-content:center" id="chk-${fd.key}">${state.fields[state.module][fd.key] ? '✓' : ''}</span>${fd.label}</button>`).join('');
+}
+function renderAddButton() {
+  const btn = $('#btn-add');
+  if (state.module === 'skills') {
+    btn.dataset.action = 'open-install';
+    btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>安装 Skill`;
+  } else {
+    btn.dataset.action = 'bookmark-add';
+    btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>添加`;
+  }
+}
+function renderAll() {
+  renderModuleNav();
+  renderSidebarSection();
+  renderSortMenu();
+  renderFieldsMenu();
+  renderAddButton();
+  renderList();
+  $('#filter-bar').classList.toggle('hidden', state.tagFilter === null || state.tagFilter === 'none');
+  if (state.tagFilter !== null && state.tagFilter !== 'none') $('#filter-tag-name').textContent = TAG_MAP[state.tagFilter].name;
+}
+
+// ================= 弹窗 =================
+function openInstall() { $('#modal-install').classList.remove('hidden'); $('#github-url').value = ''; $('#github-url').focus(); }
+function closeInstall() { $('#modal-install').classList.add('hidden'); }
+function switchTab(tab) {
+  const active = 'flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md text-[13px] font-medium';
+  const inactive = 'flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md text-[13px] text-muted-foreground';
+  $('#tab-github').className = tab === 'github' ? `${active} bg-card shadow-sm` : inactive;
+  $('#tab-upload').className = tab === 'upload' ? `${active} bg-card shadow-sm` : inactive;
+  $('#panel-github').classList.toggle('hidden', tab !== 'github');
+  $('#panel-upload').classList.toggle('hidden', tab !== 'upload');
+}
+function btnLoading(btn, text) {
+  btn.dataset.orig = btn.innerHTML;
+  btn.innerHTML = `<svg class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.22-8.56"/></svg>${text}`;
+  btn.disabled = true;
+}
+function btnRestore(btn) { btn.innerHTML = btn.dataset.orig; btn.disabled = false; }
+
+function installFromGithub() {
+  const url = $('#github-url').value.trim();
+  if (!url) { toast('请输入 GitHub 仓库地址', 'error'); $('#github-url').focus(); return; }
+  const btn = $('#btn-install-github');
+  btnLoading(btn, '安装中…');
+  setTimeout(() => {
+    const seg = url.replace(/\.git$/, '').split('/').filter(Boolean).pop() || 'new-skill';
+    SKILLS.unshift({ id: Date.now(), name: seg, desc: `从 ${url} 安装的 skill，安装后可查看 SKILL.md 了解用法。`,
+      source: 'github', url: url.replace(/^https?:\/\//, ''), sha: randSha(), hasUpdate: false,
+      tagIds: [], installedAt: nowStr(), updatedAt: nowStr(),
+      files: [{ name: 'SKILL.md', type: 'file' }],
+      content: `<h1>${esc(seg)}</h1><p>该 skill 通过 GitHub 安装，内容以仓库中的 SKILL.md 为准。</p><h2>来源</h2><p><code>${esc(url)}</code></p>` });
+    btnRestore(btn); closeInstall();
+    state.tagFilter = null; state.search = ''; $('#search').value = ''; state.pageIndex = 0;
+    renderAll(); showView('list');
+    toast(`安装成功：${seg}`, 'success');
+    setTimeout(() => { const cards = document.querySelectorAll('.u-card'); if (cards[0]) cards[0].classList.add('flash'); }, 60);
+  }, 1300);
+}
+function installFromUpload() {
+  const btn = $('#drop-zone');
+  btnLoading(btn, '解压中…');
+  setTimeout(() => {
+    SKILLS.unshift({ id: Date.now(), name: 'uploaded-demo', desc: '通过上传压缩包安装的 skill 演示条目。',
+      source: 'upload', url: '', sha: randSha(), hasUpdate: false,
+      tagIds: [], installedAt: nowStr(), updatedAt: nowStr(),
+      files: [{ name: 'SKILL.md', type: 'file' }],
+      content: `<h1>uploaded-demo</h1><p>该 skill 通过上传 .zip 安装，解压于 storage/skills/uploaded-demo/。</p>` });
+    btnRestore(btn); closeInstall();
+    state.tagFilter = null; state.search = ''; $('#search').value = ''; state.pageIndex = 0;
+    renderAll(); showView('list');
+    toast('上传安装成功：uploaded-demo', 'success');
+    setTimeout(() => { const cards = document.querySelectorAll('.u-card'); if (cards[0]) cards[0].classList.add('flash'); }, 60);
+  }, 1000);
+}
+
+// ================= 事件 =================
+document.addEventListener('click', (e) => {
+  const ddTrigger = e.target.closest('[data-dd]');
+  if (ddTrigger) {
+    e.stopPropagation();
+    const menu = document.querySelector(`[data-menu="${ddTrigger.dataset.dd}"]`);
+    const wasHidden = menu.classList.contains('hidden');
+    closeAllMenus();
+    if (wasHidden) {
+      menu.classList.remove('hidden');
+      const tagInput = menu.querySelector('#new-tag-input');
+      if (tagInput) setTimeout(() => tagInput.focus(), 50);
+      if (ddTrigger.dataset.dd === 'user') {
+        menu.style.position = 'fixed';
+        const r = ddTrigger.getBoundingClientRect();
+        menu.style.left = (r.right + 6) + 'px';
+        menu.style.top = (r.bottom - menu.offsetHeight - 4) + 'px';
+      }
+      ddTrigger.dataset.open = 'true';
+    }
+    return;
+  }
+  if (!e.target.closest('.dd-menu')) closeAllMenus();
+
+  const el = e.target.closest('[data-action]');
+  if (!el) return;
+  const a = el.dataset.action;
+  const id = Number(el.dataset.id);
+
+  switch (a) {
+    case 'theme': cycleTheme(); break;
+    case 'settings': toast('设置面板 · 演示从略（有可用更新）', 'info'); break;
+    case 'logout': toast('已退出登录（演示）', 'info'); break;
+    case 'toggle-sidebar':
+      state.sidebarOpen = !state.sidebarOpen;
+      $('#sidebar').style.width = state.sidebarOpen ? '300px' : '0px';
+      document.body.classList.toggle('sidebar-open', state.sidebarOpen);
+      break;
+    case 'module': {
+      const mod = el.dataset.module;
+      if (state.module === mod) {
+        state.tagFilter = null;           // 点当前模块 = 清除筛选
+      } else {
+        state.module = mod;
+        state.tagFilter = null;
+        state.selected.clear();
+        state.search = ''; $('#search').value = '';
+      }
+      state.view = 'list';
+      state.pageIndex = 0;
+      renderAll();
+      break;
+    }
+    case 'tag-filter':
+      state.tagFilter = state.tagFilter === Number(el.dataset.tagid) ? null : Number(el.dataset.tagid);
+      state.pageIndex = 0;
+      renderAll();
+      break;
+    case 'clear-filter': state.tagFilter = null; state.pageIndex = 0; renderAll(); break;
+    case 'tag-search-toggle': {
+      const wrap = $('#tag-search-wrap');
+      wrap.classList.toggle('hidden');
+      if (!wrap.classList.contains('hidden')) $('#tag-search').focus();
+      break;
+    }
+    case 'tag-expand': {
+      const tid = Number(el.dataset.tagid);
+      if (state.expandedTags.has(tid)) state.expandedTags.delete(tid); else state.expandedTags.add(tid);
+      renderSidebarSection();
+      break;
+    }
+    case 'tag-edit': toast('编辑标签 · 演示从略', 'info'); break;
+    case 'tag-pin': toast('已置顶标签（演示）', 'success'); break;
+    case 'tag-delete': toast('删除标签 · 演示从略', 'info'); break;
+    case 'toggle-counts':
+      state.showCounts = !state.showCounts;
+      $('#chk-counts').textContent = state.showCounts ? '✓' : '';
+      renderSidebarSection();
+      break;
+    case 'toggle-nested':
+      state.includeNested = !state.includeNested;
+      $('#chk-nested').textContent = state.includeNested ? '✓' : '';
+      renderSidebarSection(); renderList();
+      break;
+    case 'layout':
+      state.layout = el.dataset.layout;
+      state.selected.clear();
+      $$('[data-menu="view"] [data-action="layout"]').forEach(b => b.style.background = b.dataset.layout === state.layout ? 'var(--muted)' : 'transparent');
+      renderList();
+      break;
+    case 'field': {
+      const f = el.dataset.field;
+      state.fields[state.module][f] = !state.fields[state.module][f];
+      renderFieldsMenu(); renderList();
+      break;
+    }
+    case 'sort':
+      state.sort[state.module] = el.dataset.sort;
+      state.pageIndex = 0;
+      renderSortMenu(); renderList();
+      break;
+    case 'page': {
+      const total = filteredItems().length;
+      const pageCount = Math.max(1, Math.ceil(total / state.pageSize));
+      const p = el.dataset.page;
+      if (p === 'first') state.pageIndex = 0;
+      else if (p === 'prev') state.pageIndex = Math.max(0, state.pageIndex - 1);
+      else if (p === 'next') state.pageIndex = Math.min(pageCount - 1, state.pageIndex + 1);
+      else if (p === 'last') state.pageIndex = pageCount - 1;
+      renderList();
+      $('#content-scroll').scrollTo({ top: 0 });
+      break;
+    }
+    case 'open-install': openInstall(); break;
+    case 'close-install': closeInstall(); break;
+    case 'tab': switchTab(el.dataset.tab); break;
+    case 'install-github': installFromGithub(); break;
+    case 'install-upload': installFromUpload(); break;
+    case 'bookmark-add': toast('添加书签 · 演示从略', 'info'); break;
+    case 'toggle-select':
+      if (state.selected.has(id)) state.selected.delete(id); else state.selected.add(id);
+      renderList();
+      break;
+    case 'bulk-select-all': {
+      const pageList = pageItems(filteredItems());
+      const allSel = pageList.length > 0 && pageList.every(i => state.selected.has(i.id));
+      pageList.forEach(i => allSel ? state.selected.delete(i.id) : state.selected.add(i.id));
+      renderList();
+      break;
+    }
+    case 'bulk-clear': state.selected.clear(); renderList(); break;
+    case 'bulk-tags': toast('批量打标签 · 演示从略', 'info'); break;
+    case 'bulk-refresh': toast('刷新元数据 · 演示从略', 'info'); break;
+    case 'bulk-delete': {
+      const items = M().items();
+      const n = state.selected.size;
+      for (let i = items.length - 1; i >= 0; i--) if (state.selected.has(items[i].id)) items.splice(i, 1);
+      state.selected.clear();
+      renderAll();
+      toast(`已删除 ${n} 项`, 'info');
+      break;
+    }
+    case 'card-open':
+      if (state.module === 'skills') { showView('detail'); renderDetail(id); }
+      else toast('书签编辑 · 演示从略', 'info');
+      break;
+    case 'detail-back': showView('list'); renderList(); break;
+    case 'menu-check': case 'detail-check': {
+      const s = SKILLS.find(x => x.id === id);
+      btnLoading(el, '检查中…');
+      setTimeout(() => {
+        btnRestore(el);
+        if (s.hasUpdate) toast(`发现新版本 ${s.newSha}`, 'info');
+        else toast(`${s.name} 已是最新版本`, 'success');
+      }, 900);
+      break;
+    }
+    case 'detail-update': {
+      const s = SKILLS.find(x => x.id === id);
+      btnLoading(el, '更新中…');
+      setTimeout(() => {
+        s.sha = s.newSha || randSha(); s.hasUpdate = false; s.updatedAt = nowStr();
+        renderDetail(id); renderList(); renderSidebarSection();
+        toast(`已更新至 ${s.sha}`, 'success');
+      }, 1100);
+      break;
+    }
+    case 'menu-export': case 'detail-export': {
+      const s = SKILLS.find(x => x.id === id);
+      toast(`已导出 ${s.name}.zip（演示）`, 'success');
+      break;
+    }
+    case 'menu-delete': case 'detail-delete': {
+      const idx = SKILLS.findIndex(x => x.id === id);
+      const name = SKILLS[idx].name;
+      SKILLS.splice(idx, 1);
+      renderAll(); showView('list');
+      toast(`已删除 ${name}`, 'info');
+      break;
+    }
+    case 'bookmark-edit': toast('编辑书签 · 演示从略', 'info'); break;
+    case 'bookmark-copy': toast('已复制链接（演示）', 'success'); break;
+    case 'bookmark-delete': {
+      const idx = BOOKMARKS.findIndex(x => x.id === id);
+      const name = BOOKMARKS[idx].title;
+      BOOKMARKS.splice(idx, 1);
+      renderAll();
+      toast(`已删除 ${name}`, 'info');
+      break;
+    }
+    case 'remove-tag': {
+      const s = SKILLS.find(x => x.id === Number(el.dataset.skillid));
+      s.tagIds = s.tagIds.filter(t => t !== Number(el.dataset.tagid));
+      renderDetail(s.id); renderSidebarSection();
+      toast('已移除标签', 'info');
+      break;
+    }
+    case 'add-tag': {
+      const s = SKILLS.find(x => x.id === Number(el.dataset.skillid));
+      const t = Number(el.dataset.tagid);
+      if (s.tagIds.includes(t)) s.tagIds = s.tagIds.filter(x => x !== t);
+      else s.tagIds.push(t);
+      renderDetail(s.id); renderSidebarSection();
+      break;
+    }
+    case 'file-preview': toast(`预览 ${el.dataset.name}（演示）`, 'info'); break;
+  }
+});
+
+$('#search').addEventListener('input', (e) => { state.search = e.target.value; state.pageIndex = 0; renderList(); });
+$('#page-size').addEventListener('change', (e) => { state.pageSize = Number(e.target.value); state.pageIndex = 0; renderList(); });
+document.addEventListener('input', (e) => { if (e.target.id === 'tag-search') renderSidebarSection(); });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    closeInstall(); closeAllMenus();
+    if (state.selected.size) { state.selected.clear(); renderList(); }
+  }
+  if (e.key === 'Enter' && e.target && e.target.id === 'new-tag-input') {
+    const name = e.target.value.trim();
+    if (!name) return;
+    const skill = SKILLS.find(x => x.id === state.selectedId);
+    if (!skill) return;
+    let tag = TAGS.find(t => t.name.toLowerCase() === name.toLowerCase());
+    if (!tag) {
+      const palette = ['#3b82f6', '#10b981', '#f59e0b', '#f43f5e', '#8b5cf6', '#0ea5e9', '#ec4899'];
+      const c = palette[Math.floor(Math.random() * palette.length)];
+      tag = { id: Math.max(...TAGS.map(t => t.id)) + 1, name, color: c, t: c, td: c, parent: 0 };
+      TAGS.push(tag);
+      TAG_MAP[tag.id] = tag;
+    }
+    if (!skill.tagIds.includes(tag.id)) skill.tagIds.push(tag.id);
+    renderDetail(skill.id); renderSidebarSection();
+    toast(`已添加标签：${tag.name}`, 'success');
+  }
+});
+
+const dz = $('#drop-zone');
+dz.addEventListener('dragover', (e) => { e.preventDefault(); dz.style.borderColor = 'var(--foreground)'; dz.style.background = 'var(--muted)'; });
+dz.addEventListener('dragleave', () => { dz.style.borderColor = ''; dz.style.background = ''; });
+dz.addEventListener('drop', (e) => { e.preventDefault(); dz.style.borderColor = ''; dz.style.background = ''; installFromUpload(); });
+
+// ================= 初始化 =================
+applyTheme();
+switchTab('github');
+$$('[data-menu="view"] [data-action="layout"]').forEach(b => { if (b.dataset.layout === state.layout) b.style.background = 'var(--muted)'; });
+renderAll();
+</script>
+</body>
+</html>

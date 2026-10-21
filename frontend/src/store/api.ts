@@ -24,6 +24,17 @@ export const API_ENDPOINTS = {
     updateColor: (id: any) => `${API_BASE}/tags/update-color?tag-id=${id}`,
     updatePinned: (id: any) => `${API_BASE}/tags/update-pinned?tag-id=${id}`,
   },
+  skills: {
+    list: `${API_BASE}/skills`,
+    install: `${API_BASE}/skills/install`,
+    upload: `${API_BASE}/skills/upload`,
+    detail: (id: number) => `${API_BASE}/skills/detail?id=${id}`,
+    deleteSkills: `${API_BASE}/skills/delete`,
+    tags: `${API_BASE}/skills/tags`,
+    checkUpdates: `${API_BASE}/skills/check-updates`,
+    update: `${API_BASE}/skills/update`,
+    exportSkill: (id: number) => `${API_BASE}/skills/export?id=${id}`,
+  },
   auth: {
     login: `${API_BASE}/auth/login`,
     logout: `${API_BASE}/auth/logout`,

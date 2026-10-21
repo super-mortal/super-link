@@ -11,9 +11,10 @@ import { Toaster } from './components/ui/sonner';
 import { NotFound } from './layouts/NotFound.tsx';
 import { RouterProvider } from 'react-router';
 import { Spinner } from '@/components/ui/spinner.tsx';
-import { ItemList } from '@/pages/ItemList.tsx';
+import { ModuleList } from '@/pages/ModuleList.tsx';
 import { CreateItem } from '@/pages/CreateItem.tsx';
 import { EditItem } from '@/pages/EditItem.tsx';
+import { SkillDetail } from '@/pages/SkillDetail.tsx';
 
 const InitMiddleware = observer(() => {
   const store = useContext(StoreContext);
@@ -79,12 +80,13 @@ const router = createBrowserRouter([
           {
             element: <AuthMiddleware />,
             children: [
-              { path: '/', element: <ItemList /> },
+              { path: '/', element: <ModuleList /> },
               { path: '/setup/auth', element: <SetupAuth /> },
               { path: '/setup/import', element: <SetupImport /> },
               { path: '/setup/integrations', element: <SetupIntegrations /> },
               { path: '/create-item', element: <CreateItem /> },
               { path: '/edit-item/:itemID', element: <EditItem /> },
+              { path: '/skills/:skillID', element: <SkillDetail /> },
             ],
           },
         ],

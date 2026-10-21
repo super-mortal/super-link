@@ -162,7 +162,7 @@ a:hover {
 }
 
 @layer components {
-  .item-list--cards {
+  .module-list--cards {
     .actions-container {
       @apply absolute top-2 right-2;
     }
@@ -172,7 +172,7 @@ a:hover {
     }
   }
 
-  .item-list--list {
+  .module-list--list {
     .actions-container {
       @apply absolute top-3 right-0 @2xl/main:top-6;
     }
@@ -220,5 +220,21 @@ a:hover {
   .no-scrollbar::-webkit-scrollbar {
     display: none;
     /* WebKit (Chrome, Safari) */
+  }
+
+  /* 新装 Skill 卡片高亮：由 data-just-installed 触发，2s 后由 store 清除标记 */
+  [data-just-installed='true'] {
+    animation: just-installed-flash 1.6s ease;
+  }
+}
+
+@keyframes just-installed-flash {
+  0%,
+  60% {
+    box-shadow: 0 0 0 3px var(--ring);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 transparent;
   }
 }

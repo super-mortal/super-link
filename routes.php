@@ -15,6 +15,15 @@ use Controllers\ItemsGetController;
 use Controllers\ItemsTagsUpdateController;
 use Controllers\ItemsUpdateController;
 use Controllers\SetupDatabaseController;
+use Controllers\SkillsCheckUpdatesController;
+use Controllers\SkillsDeleteController;
+use Controllers\SkillsDetailController;
+use Controllers\SkillsExportController;
+use Controllers\SkillsGetController;
+use Controllers\SkillsInstallController;
+use Controllers\SkillsTagsUpdateController;
+use Controllers\SkillsUpdateController;
+use Controllers\SkillsUploadController;
 use Controllers\TagsController;
 use Controllers\TagsCreateController;
 use Controllers\TagsDeleteController;
@@ -44,6 +53,35 @@ return [
 			],
 			'tags' => [
 				'PATCH' => ItemsTagsUpdateController::class,
+			],
+		],
+		'skills' => [
+			'/' => [
+				'GET' => SkillsGetController::class,
+			],
+			'check-updates' => [
+				'POST' => SkillsCheckUpdatesController::class,
+			],
+			'delete' => [
+				'POST' => SkillsDeleteController::class,
+			],
+			'detail' => [
+				'GET' => SkillsDetailController::class,
+			],
+			'export' => [
+				'GET' => SkillsExportController::class,
+			],
+			'install' => [
+				'POST' => SkillsInstallController::class,
+			],
+			'tags' => [
+				'PATCH' => SkillsTagsUpdateController::class,
+			],
+			'update' => [
+				'POST' => SkillsUpdateController::class,
+			],
+			'upload' => [
+				'POST' => SkillsUploadController::class,
 			],
 		],
 		'tags' => [

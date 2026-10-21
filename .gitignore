@@ -17,3 +17,6 @@ desktop.ini
 *.tmp
 *.bak
 *~
+
+# super-agent 协同开发工作区（本地，不入库）
+.super-agent/

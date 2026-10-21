@@ -23,6 +23,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu.tsx';
 import { IconDotsVertical } from '@tabler/icons-react';
+import { MODULES } from '@/lib/modules.ts';
 
 export const NavTags = observer(({ itemIDsByTagID }: { itemIDsByTagID: Record<string, number[]> }) => {
   const store = React.useContext(StoreContext);
@@ -150,7 +151,7 @@ export const NavTags = observer(({ itemIDsByTagID }: { itemIDsByTagID: Record<st
         </InputGroup>
       ) : (
         <div className="me-1 flex items-center justify-end gap-2">
-          <SidebarGroupLabel className="me-auto">标签</SidebarGroupLabel>
+          <SidebarGroupLabel className="me-auto">{MODULES[store.module].sectionLabel}</SidebarGroupLabel>
           <SidebarGroupAction className="relative top-0 right-0 after:hidden" onClick={showTagSearch}>
             <Search /> <span className="sr-only">筛选标签</span>
           </SidebarGroupAction>
@@ -171,7 +172,7 @@ export const NavTags = observer(({ itemIDsByTagID }: { itemIDsByTagID: Record<st
                   checked={prefStore.includeNestedTagItems}
                   onCheckedChange={(value) => prefStore.setIncludeNestedTagItems(value)}
                 >
-                  <span>包含嵌套标签的项目</span>
+                  <span>包含嵌套标签的{MODULES[store.module].noun}</span>
                 </DropdownMenuCheckboxItem>
                 <DropdownMenuCheckboxItem
                   checked={prefStore.displaySidebarTagItemCounts}

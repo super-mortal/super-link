@@ -1,6 +1,6 @@
 import { type ClassValue, clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { ItemType, LayoutType } from '@/lib/types.ts';
+import { LayoutType, ModuleKey } from '@/lib/types.ts';
 import { VisibilityState } from '@tanstack/react-table';
 
 export function cn(...inputs: ClassValue[]) {
@@ -41,23 +41,25 @@ export const saveLayoutPreference = (value: LayoutType): void => {
   }
 };
 
-export const getSavedLayoutColumnVisibilityPreference = (
-  layout: LayoutType
-): Partial<Record<keyof ItemType, boolean>> => {
+export const getSavedLayoutColumnVisibilityPreference = (module: ModuleKey, layout: LayoutType): VisibilityState => {
   const defaultPref = {
     updated_at: false,
   };
   try {
-    const stored = localStorage.getItem(`column-visibility-${layout}`);
+    const stored = localStorage.getItem(`column-visibility-${module}-${layout}`);
     return stored ? JSON.parse(stored) : defaultPref;
   } catch {
     return defaultPref;
   }
 };
 
-export const saveLayoutColumnVisibilityPreference = (layout: LayoutType, columnVisibility: VisibilityState): void => {
+export const saveLayoutColumnVisibilityPreference = (
+  module: ModuleKey,
+  layout: LayoutType,
+  columnVisibility: VisibilityState
+): void => {
   try {
-    localStorage.setItem(`column-visibility-${layout}`, JSON.stringify(columnVisibility));
+    localStorage.setItem(`column-visibility-${module}-${layout}`, JSON.stringify(columnVisibility));
   } catch {
     // Ignore storage errors - failing silently is acceptable for preferences
   }

@@ -12,6 +12,15 @@ class Config
 		return sprintf('%s/%s.db', self::STORAGE_PATH, $db_name);
 	}
 
+	public static function getSkillsStoragePath(): string
+	{
+		$path = self::STORAGE_PATH . '/skills';
+		if (!is_dir($path)) {
+			mkdir($path, 0755, true);
+		}
+		return $path;
+	}
+
 	public static function getWatchtowerUrl(): string
 	{
 		return rtrim(getenv('WATCHTOWER_URL') ?: 'http://watchtower:8080', '/');

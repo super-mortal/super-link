@@ -11,15 +11,25 @@ import {
 } from '@/components/ui/alert-dialog.tsx';
 import React from 'react';
 
-export const DeleteDialog = ({ onConfirm, itemsCount, children }) => {
+type DeleteDialogProps = {
+  /** 确认删除的回调；异步实现允许返回 Promise */
+  onConfirm: () => void | Promise<void>;
+  itemsCount: number;
+  /** 量词名词：书签为「项目」，Skill 为「Skill」 */
+  noun?: string;
+  /** 触发按钮 / 菜单项 */
+  children: React.ReactNode;
+};
+
+export const DeleteDialog = ({ onConfirm, itemsCount, noun = '项目', children }: DeleteDialogProps) => {
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>{children}</AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>删除{itemsCount === 1 ? '项目' : `${itemsCount} 个项目`}？</AlertDialogTitle>
+          <AlertDialogTitle>删除{itemsCount === 1 ? noun : `${itemsCount} 个${noun}`}？</AlertDialogTitle>
           <AlertDialogDescription>
-            此操作无法撤销。{itemsCount === 1 ? '该项目' : '这些项目'}将被永久删除。
+            此操作无法撤销。{itemsCount === 1 ? `该${noun}` : `这些${noun}`}将被永久删除。
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter className="flex flex-col-reverse sm:flex-row">

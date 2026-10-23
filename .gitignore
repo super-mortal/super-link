@@ -20,3 +20,6 @@ desktop.ini
 
 # super-agent 协同开发工作区（本地，不入库）
 .super-agent/
+
+# 需求文档与原型（本地资料，不入库）
+mockups/

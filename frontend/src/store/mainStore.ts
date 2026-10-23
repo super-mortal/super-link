@@ -71,6 +71,9 @@ class MainStore {
       options['body'] = bodyData instanceof FormData ? bodyData : JSON.stringify(bodyData);
     }
 
+    // 只有写操作（POST/PATCH/PUT/DELETE）才弹成功提示；GET/HEAD 是页面加载时的静默读取
+    const isMutation = method !== 'GET' && method !== 'HEAD';
+
     return fetch(endpoint, options)
       .then((response) => {
         if (response.ok) {
@@ -90,7 +93,7 @@ class MainStore {
         });
       })
       .then((data) => {
-        if (typeof data.message !== 'undefined' && !skipSuccessMessage) {
+        if (typeof data.message !== 'undefined' && !skipSuccessMessage && isMutation) {
           toast.success(data.message, { position: 'top-center' });
         }
         return data;

@@ -102,3 +102,120 @@ export type SkillUpdateType = {
   current: string;
   latest: string;
 };
+
+/* ---------------------------------------------------------------------------
+ * 账号库（PRD docs/prd/account-vault.md §6 / §8）
+ * 说明：所有密文字段以 Base64 字符串在前后端间传输，落库为 BLOB；
+ * 前端解密后仅驻留内存，绝不写入 localStorage / sessionStorage / MobX observable。
+ * ------------------------------------------------------------------------- */
+
+/** KDF 算法标识：浏览器无原生 Argon2，首版固定降级为 pbkdf2-sha256（见 vaultCrypto.ts 文件头） */
+export type VaultKdfAlgorithmType = 'argon2id' | 'pbkdf2-sha256';
+
+/** 单字段密文：ct 为密文、iv 为 12 字节 nonce，均为 Base64 */
+export type VaultSecretField = {
+  ct: string;
+  iv: string;
+};
+
+/** 加密字段名，与 AAD 的 field 段一致 */
+export type VaultSecretFieldName = 'password' | 'totp' | 'notes';
+
+/** TOTP 明文载荷（`totp_ct` 解密后得到的就是这段 JSON） */
+export type TotpPayloadType = {
+  secret: string;
+  issuer?: string;
+  account?: string;
+};
+
+/** KDF 参数：与 vault_meta 的 kdf / kdf_* 列对应，具体取值见 vaultConstants.ts */
+export type VaultKdfParamsType = {
+  algorithm: VaultKdfAlgorithmType;
+  /** PBKDF2 迭代次数（≥ 600000）；argon2id 时无意义 */
+  iterations: number;
+  /** 摘要算法，PBKDF2-HMAC-SHA256 固定为 SHA-256 */
+  hash: 'SHA-256';
+  /** 盐长度（字节），仅用于本地生成盐时参考，不参与派生计算 */
+  saltBytes?: number;
+  /** Argon2id 的内存开销（KiB），降级 PBKDF2 时缺省 */
+  memory?: number;
+  /** Argon2id 并行度，降级 PBKDF2 时缺省 */
+  parallelism?: number;
+};
+
+/**
+ * 账号库元信息（GET /api/vault/meta）。
+ * 只含密钥派生与包裹所需的公开参数，不含任何账号明文；
+ * 主密码正确与否由客户端解密 wrapped_dek 时的 GCM 校验判断。
+ */
+export type VaultMetaType = {
+  initialized: boolean;
+  /** 加密格式版本，首版为 1 */
+  version: number;
+  kdf: VaultKdfAlgorithmType;
+  /** 实际写入数据库的 KDF 参数（Argon2id 才用到 kdf_memory / kdf_parallelism） */
+  kdf_iterations?: number | null;
+  kdf_memory?: number | null;
+  kdf_parallelism?: number | null;
+  /** 16 字节随机盐，Base64 */
+  salt: string;
+  /** 被 KEK 用 AES-256-GCM 包裹的 DEK，Base64 */
+  wrapped_dek: string;
+  /** 包裹 DEK 使用的 12 字节 nonce，Base64 */
+  wrap_nonce: string;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+/** 账号密文集合：缺省表示该字段未填写，不是「空字符串」 */
+export type AccountSecretsType = {
+  password?: VaultSecretField | null;
+  totp?: VaultSecretField | null;
+  notes?: VaultSecretField | null;
+};
+
+/** 账号元数据（PRD §6.2 / §8.2）；secrets 只在详情接口返回 */
+export type AccountType = {
+  id: number;
+  name: string;
+  platform: string;
+  identifier: string;
+  group_id?: number | null;
+  /** 详情接口返回的分组名，列表接口可能缺省 */
+  group?: string | null;
+  login_url?: string | null;
+  /** 通过库内哪个账号登录（如 X 通过 Google 主账号） */
+  login_via_account_id?: number | null;
+  favorite: boolean;
+  secrets?: AccountSecretsType;
+  password_updated_at?: string | null;
+  last_used_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+/** 账号分组（PRD §6.3） */
+export type AccountGroupType = {
+  id: number;
+  name: string;
+  sort: number;
+};
+
+export type AccountAuthorizationStatusType = 'active' | 'revoked';
+
+/** 授权关系（PRD §6.4） */
+export type AccountAuthorizationType = {
+  id: number;
+  /** 来源账号 */
+  account_id: number;
+  /** 站点 / 服务，如 X、Notion、Slack */
+  service: string;
+  identifier: string;
+  note?: string | null;
+  /** 关联到库内账号，可空；只能指向账号库内部账号 */
+  linked_account_id?: number | null;
+  status: AccountAuthorizationStatusType;
+  granted_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};

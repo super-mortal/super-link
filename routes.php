@@ -36,6 +36,10 @@ use Controllers\UserDeleteController;
 use Controllers\UserGetController;
 use Controllers\UserPasswordUpdateController;
 use Controllers\UserUsernameUpdateController;
+use Controllers\VaultChangeMasterController;
+use Controllers\VaultMetaGetController;
+use Controllers\VaultResetController;
+use Controllers\VaultSetupController;
 
 return [
 	'api' => [
@@ -119,6 +123,21 @@ return [
 			],
 			'logout' => [
 				'POST' => AuthLogoutController::class
+			],
+		],
+		// 账号库元信息（PRD §8.1）：只处理 KDF 参数与密文，不返回任何账号明文
+		'vault' => [
+			'meta' => [
+				'GET' => VaultMetaGetController::class,
+			],
+			'setup' => [
+				'POST' => VaultSetupController::class,
+			],
+			'change-master' => [
+				'POST' => VaultChangeMasterController::class,
+			],
+			'reset' => [
+				'POST' => VaultResetController::class,
 			],
 		],
 		'setup' => [

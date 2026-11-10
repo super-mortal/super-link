@@ -305,6 +305,86 @@ class Repository
 		]);
 	}
 
+	/**
+	 * 读取账号库元信息（单行，id 固定为 1）
+	 *
+	 * 只返回 KDF 参数与密文，不涉及任何账号数据；未初始化时返回 false。
+	 */
+	public function getVaultMeta()
+	{
+		$stmt = $this->pdo->query('SELECT * FROM vault_meta WHERE id = 1');
+		return $stmt->fetch(PDO::FETCH_ASSOC);
+	}
+
+	/**
+	 * 写入账号库元信息（仅在初始化时调用一次）
+	 *
+	 * 密文字段以二进制写入 BLOB：kdf_salt / wrapped_dek / wrap_nonce 都是客户端生成的随机字节，
+	 * 用 PARAM_LOB 绑定可以避免二进制中的 NUL 字节被按字符串截断。
+	 */
+	public function createVaultMeta(array $data): bool
+	{
+		$stmt = $this->pdo->prepare(
+			'INSERT INTO vault_meta
+			(id, version, kdf, kdf_salt, kdf_memory, kdf_iterations, kdf_parallelism, wrapped_dek, wrap_nonce, created_at, updated_at)
+			VALUES
+			(1, :version, :kdf, :kdf_salt, :kdf_memory, :kdf_iterations, :kdf_parallelism, :wrapped_dek, :wrap_nonce, :created_at, :updated_at)'
+		);
+		$date = date('Y-m-d H:i:s');
+		$stmt->bindValue(':version', (int)$data['version'], PDO::PARAM_INT);
+		$stmt->bindValue(':kdf', (string)$data['kdf'], PDO::PARAM_STR);
+		$stmt->bindValue(':kdf_salt', $data['kdf_salt'], PDO::PARAM_LOB);
+		$stmt->bindValue(':kdf_memory', (int)$data['kdf_memory'], PDO::PARAM_INT);
+		$stmt->bindValue(':kdf_iterations', (int)$data['kdf_iterations'], PDO::PARAM_INT);
+		$stmt->bindValue(':kdf_parallelism', (int)$data['kdf_parallelism'], PDO::PARAM_INT);
+		$stmt->bindValue(':wrapped_dek', $data['wrapped_dek'], PDO::PARAM_LOB);
+		$stmt->bindValue(':wrap_nonce', $data['wrap_nonce'], PDO::PARAM_LOB);
+		$stmt->bindValue(':created_at', $date, PDO::PARAM_STR);
+		$stmt->bindValue(':updated_at', $date, PDO::PARAM_STR);
+		return $stmt->execute();
+	}
+
+	/**
+	 * 覆盖账号库元信息（更换主密码时使用，created_at 保留首次初始化时间）
+	 */
+	public function updateVaultMeta(array $data): bool
+	{
+		$stmt = $this->pdo->prepare(
+			'UPDATE vault_meta
+			SET version = :version,
+				kdf = :kdf,
+				kdf_salt = :kdf_salt,
+				kdf_memory = :kdf_memory,
+				kdf_iterations = :kdf_iterations,
+				kdf_parallelism = :kdf_parallelism,
+				wrapped_dek = :wrapped_dek,
+				wrap_nonce = :wrap_nonce,
+				updated_at = :updated_at
+			WHERE id = 1'
+		);
+		$stmt->bindValue(':version', (int)$data['version'], PDO::PARAM_INT);
+		$stmt->bindValue(':kdf', (string)$data['kdf'], PDO::PARAM_STR);
+		$stmt->bindValue(':kdf_salt', $data['kdf_salt'], PDO::PARAM_LOB);
+		$stmt->bindValue(':kdf_memory', (int)$data['kdf_memory'], PDO::PARAM_INT);
+		$stmt->bindValue(':kdf_iterations', (int)$data['kdf_iterations'], PDO::PARAM_INT);
+		$stmt->bindValue(':kdf_parallelism', (int)$data['kdf_parallelism'], PDO::PARAM_INT);
+		$stmt->bindValue(':wrapped_dek', $data['wrapped_dek'], PDO::PARAM_LOB);
+		$stmt->bindValue(':wrap_nonce', $data['wrap_nonce'], PDO::PARAM_LOB);
+		$stmt->bindValue(':updated_at', date('Y-m-d H:i:s'), PDO::PARAM_STR);
+		return $stmt->execute();
+	}
+
+	/**
+	 * 删除账号库元信息（重置账号库）
+	 *
+	 * 幂等：没有记录时执行删除也不报错，由调用方决定如何提示。
+	 */
+	public function deleteVaultMeta(): bool
+	{
+		$stmt = $this->pdo->prepare('DELETE FROM vault_meta WHERE id = 1');
+		return $stmt->execute();
+	}
+
 	public function setItemTags(array $tag_ids, int $item_id): bool
 	{
 		// 1. delete all tags relations
@@ -566,6 +646,11 @@ class Repository
 				ON DELETE CASCADE
 			)');
 
+			// 账号库元信息表（PRD §6.1）：新库在这里建，老库由 migrate() 的增量逻辑补齐
+			if (!$this->setupVaultMetaTable()) {
+				return false;
+			}
+
 			return true;
 		} catch (Exception $e) {
 			return false;
@@ -584,6 +669,10 @@ class Repository
 
 		if (!$this->checkSkillsTagsTableExists() && !$this->setupSkillsTagsTable()) {
 			throw new Exception('Failed to set up skills_tags table');
+		}
+
+		if (!$this->checkVaultMetaTableExists() && !$this->setupVaultMetaTable()) {
+			throw new Exception('Failed to set up vault_meta table');
 		}
 
 		if (!$this->checkTagIndexExists() && !$this->createTagIndex()) {
@@ -713,6 +802,48 @@ class Repository
 				ON DELETE CASCADE,
 				FOREIGN KEY(tag_id) REFERENCES tags(id)
 				ON DELETE CASCADE
+			)');
+			return true;
+		} catch (Exception $e) {
+			return false;
+		}
+	}
+
+	/**
+	 * 检查 vault_meta 表是否存在（老库升级用）
+	 */
+	public function checkVaultMetaTableExists()
+	{
+		try {
+			$stmt = $this->pdo->query("SELECT name FROM sqlite_master WHERE type='table' AND name='vault_meta'");
+			return $stmt->fetch() !== false;
+		} catch (Exception $e) {
+			return false;
+		}
+	}
+
+	/**
+	 * 创建 vault_meta 表（PRD §6.1）
+	 *
+	 * 单行表：id 固定为 1，用 CHECK 在库层面兜住，避免出现多行元信息导致解锁时读错记录。
+	 * 密文字段用 BLOB 存原始二进制；服务端只负责搬运，不做任何加解密。
+	 * CREATE TABLE IF NOT EXISTS 让 migrate() 可以重复执行而不报错。
+	 */
+	public function setupVaultMetaTable()
+	{
+		try {
+			$this->pdo->exec('CREATE TABLE IF NOT EXISTS vault_meta (
+				id INTEGER NOT NULL PRIMARY KEY CHECK (id = 1),
+				version INTEGER NOT NULL DEFAULT(1),
+				kdf TEXT NOT NULL,
+				kdf_salt BLOB NOT NULL,
+				kdf_memory INTEGER NOT NULL DEFAULT(0),
+				kdf_iterations INTEGER NOT NULL DEFAULT(0),
+				kdf_parallelism INTEGER NOT NULL DEFAULT(0),
+				wrapped_dek BLOB NOT NULL,
+				wrap_nonce BLOB NOT NULL,
+				created_at TEXT DEFAULT(NULL),
+				updated_at TEXT DEFAULT(NULL)
 			)');
 			return true;
 		} catch (Exception $e) {

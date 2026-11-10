@@ -1,5 +1,10 @@
 <?php
 
+use Controllers\AccountsCreateController;
+use Controllers\AccountsDeleteController;
+use Controllers\AccountsDetailGetController;
+use Controllers\AccountsGetController;
+use Controllers\AccountsUpdateController;
 use Controllers\AppInfoController;
 use Controllers\AppUpdateController;
 use Controllers\AuthLoginController;
@@ -138,6 +143,20 @@ return [
 			],
 			'reset' => [
 				'POST' => VaultResetController::class,
+			],
+		],
+		// 账号（PRD §8.2）：只处理元数据与密文，任何端点都不返回明文
+		'accounts' => [
+			'/' => [
+				'GET' => AccountsGetController::class,
+				'POST' => AccountsCreateController::class,
+				'PATCH' => AccountsUpdateController::class,
+			],
+			'detail' => [
+				'GET' => AccountsDetailGetController::class,
+			],
+			'delete' => [
+				'POST' => AccountsDeleteController::class,
 			],
 		],
 		'setup' => [

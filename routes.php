@@ -1,5 +1,8 @@
 <?php
 
+use Controllers\AccountsAuthorizationsCreateController;
+use Controllers\AccountsAuthorizationsDeleteController;
+use Controllers\AccountsAuthorizationsUpdateController;
 use Controllers\AccountsCreateController;
 use Controllers\AccountsDeleteController;
 use Controllers\AccountsDetailGetController;
@@ -157,6 +160,17 @@ return [
 			],
 			'delete' => [
 				'POST' => AccountsDeleteController::class,
+			],
+			// 授权关系（PRD §8.2）：新增走 /authorizations，更新与删除各占一个子路径。
+			// 更新不并入新增端点做 upsert —— 路径即语义，避免编辑弹窗残留 id 时静默覆盖别的记录
+			'authorizations' => [
+				'POST' => AccountsAuthorizationsCreateController::class,
+				'update' => [
+					'POST' => AccountsAuthorizationsUpdateController::class,
+				],
+				'delete' => [
+					'POST' => AccountsAuthorizationsDeleteController::class,
+				],
 			],
 		],
 		'setup' => [

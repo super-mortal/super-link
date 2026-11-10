@@ -11,6 +11,7 @@ super-link 是自托管的个人数据管理工具，从书签管理起步，通
 - 前端：React 19 + TypeScript 5.8 + Vite 7 SPA（`frontend/`）
 - 后端：PHP 8.4 + Apache，纯 JSON REST API（无服务端渲染 UI）
 - 数据库：SQLite（默认 `storage/link_navigator.db`）
+- 文档：产品需求文档放在 `docs/prd/`；规划中的「账号库」模块见 [docs/prd/account-vault.md](docs/prd/account-vault.md)，本地 HTML 原型在 `mockups/`（不随仓库提交）
 
 ## 技术栈与版本
 
@@ -113,6 +114,7 @@ composer install --no-dev --optimize-autoloader   # 运行时依赖：guzzlehttp
 - 后端接口变更注意兼容：前后端可能不是同一版本，接口语义变化要在注释里说明。
 - 新增/修改 UI 时保持暗色主题可用，禁止硬编码亮色。
 - Skill 上传上限 32MB：前端常量与服务端限制保持同步，改动需两边一起改。
+- **截图验证产物必须清理**：任务过程中产生的截图、录屏、临时 HTML、浏览器 profile、比对脚本等只用于过程校验，任务结束前必须全部删除，不得留在仓库或系统临时目录；提交前用 `git status` 确认没有残留。
 
 ## 不要提交
 
@@ -124,4 +126,4 @@ composer install --no-dev --optimize-autoloader   # 运行时依赖：guzzlehttp
 - `.super-agent/`、`.workbuddy/`（本地协同/记忆工作区）
 - 前端 `node_modules/`、`dist/`、`*.tsbuildinfo`、`public/dist/`
 
-`AGENTS.md` 目前为未跟踪文件，提交前先确认用户是否希望将其纳入仓库。
+`AGENTS.md` 已纳入仓库，修改后随对应变更一起提交。

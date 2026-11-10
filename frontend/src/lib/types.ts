@@ -167,6 +167,26 @@ export type VaultMetaType = {
   updated_at?: string | null;
 };
 
+/**
+ * 写入 vault_meta 的载荷（`POST /api/vault/setup` 与 `POST /api/vault/change-master` 共用）。
+ * 字段名与后端 `Utils\VaultMetaPayload::parse()` 一一对应：密文以 Base64 传输，落库为 BLOB。
+ * 这里只有密文与公开参数，**永远不含主密码本身**——主密码只在前端派生 KEK 时用到。
+ */
+export type VaultMetaPayloadType = {
+  /** 加密格式版本，首版固定 1（后端缺省同值） */
+  version?: number;
+  kdf: VaultKdfAlgorithmType;
+  kdf_memory: number;
+  kdf_iterations: number;
+  kdf_parallelism: number;
+  /** 16 字节随机盐，Base64 */
+  salt: string;
+  /** 被 KEK 包裹的 DEK，Base64 */
+  wrapped_dek: string;
+  /** 包裹 DEK 的 12 字节 nonce，Base64 */
+  wrap_nonce: string;
+};
+
 /** 账号密文集合：缺省表示该字段未填写，不是「空字符串」 */
 export type AccountSecretsType = {
   password?: VaultSecretField | null;

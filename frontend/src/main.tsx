@@ -3,7 +3,8 @@ import './index.css';
 import { App } from './App.tsx';
 import { mainStore } from './store/mainStore.ts';
 import { preferencesStore } from './store/preferencesStore.ts';
-import { PreferencesStoreContext, StoreContext } from './store/storeContext.ts';
+import { vaultStore } from './store/vaultStore.ts';
+import { PreferencesStoreContext, StoreContext, VaultStoreContext } from './store/storeContext.ts';
 import { ThemeProvider } from './components/ThemeProvider.tsx';
 import { StrictMode } from 'react';
 
@@ -11,9 +12,11 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <StoreContext.Provider value={mainStore}>
       <PreferencesStoreContext.Provider value={preferencesStore}>
-        <ThemeProvider defaultTheme="system" storageKey="faved-ui-theme">
-          <App />
-        </ThemeProvider>
+        <VaultStoreContext.Provider value={vaultStore}>
+          <ThemeProvider defaultTheme="system" storageKey="faved-ui-theme">
+            <App />
+          </ThemeProvider>
+        </VaultStoreContext.Provider>
       </PreferencesStoreContext.Provider>
     </StoreContext.Provider>
   </StrictMode>

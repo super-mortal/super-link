@@ -15,6 +15,8 @@ import {
   UpdatePasswordType,
   UpdateUsernameType,
   UserType,
+  VaultMetaPayloadType,
+  VaultMetaType,
 } from '@/lib/types.ts';
 import { DEFAULT_MODULE } from '@/lib/modules.ts';
 import { getCookie } from '@/lib/utils.ts';
@@ -714,6 +716,56 @@ class MainStore {
       this.fetchTags();
       return true;
     });
+  };
+
+  /**
+   * 账号库元信息（GET /api/vault/meta）。
+   * 未初始化时后端返回 200 + initialized=false，所以这里不做「无数据即错误」判断；
+   * 网络/服务端异常返回 null，由 vaultStore 决定展示重试还是锁定页。
+   */
+  fetchVaultMeta = async (): Promise<VaultMetaType | null> => {
+    const response = await this.runRequest(API_ENDPOINTS.vault.meta, 'GET', {}, '获取账号库信息失败', true, true);
+
+    if (response === null) {
+      return null;
+    }
+
+    return (response?.data ?? null) as VaultMetaType | null;
+  };
+
+  /**
+   * 初始化账号库（首次设置主密码）。只上传 KDF 参数 + 盐 + 被包裹的 DEK，主密码不出浏览器。
+   * 成功/失败提示由 vaultStore 统一处理（锁定页有自己的错误区，不用 toast）。
+   */
+  setupVault = async (payload: VaultMetaPayloadType): Promise<boolean> => {
+    const response = await this.runRequest(API_ENDPOINTS.vault.setup, 'POST', payload, '初始化账号库失败', true, true);
+
+    return response !== null;
+  };
+
+  /** 更换主密码：重新包裹同一把 DEK（旧主密码正确性由前端 GCM 校验判断） */
+  changeMasterPassword = async (payload: VaultMetaPayloadType): Promise<boolean> => {
+    const response = await this.runRequest(
+      API_ENDPOINTS.vault.changeMaster,
+      'POST',
+      payload,
+      '更换主密码失败',
+      true,
+      true
+    );
+
+    return response !== null;
+  };
+
+  /**
+   * 重置账号库（删除 vault_meta，之后原密文永久不可解）。
+   * 登录密码只在前端做二次确认，不发给服务端：后端 `VaultResetController` 明确不校验密码，
+   * 只依赖登录态，避免密码校验逻辑出现两份实现。
+   */
+  resetVault = async (): Promise<boolean> => {
+    const response = await this.runRequest(API_ENDPOINTS.vault.reset, 'POST', {}, '重置账号库失败', false, true);
+
+    return response !== null;
   };
 
   fetchUrlMetadata = async (url: string) => {

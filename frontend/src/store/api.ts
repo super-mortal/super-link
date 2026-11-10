@@ -39,6 +39,13 @@ export const API_ENDPOINTS = {
     login: `${API_BASE}/auth/login`,
     logout: `${API_BASE}/auth/logout`,
   },
+  /** 账号库密钥元信息：服务端只存密文与 KDF 参数，不参与加解密（PRD §8.1） */
+  vault: {
+    meta: `${API_BASE}/vault/meta`,
+    setup: `${API_BASE}/vault/setup`,
+    changeMaster: `${API_BASE}/vault/change-master`,
+    reset: `${API_BASE}/vault/reset`,
+  },
   setup: {
     setup: `${API_BASE}/setup/database`,
   },

@@ -4,10 +4,95 @@ namespace Models;
 
 use Exception;
 use PDO;
+use PDOStatement;
 
 class Repository
 {
 	private $pdo;
+
+	/**
+	 * 账号列表允许的排序字段白名单（PRD §8.2）
+	 *
+	 * ORDER BY 不能用预处理占位符，只能拼字符串；所以这里把「用户传入的 sort 值」
+	 * 映射到固定的列表达式，未知值一律回落到 updated_at，杜绝 SQL 注入。
+	 */
+	private const ACCOUNT_SORTS = [
+		'updated_at' => 'updated_at',
+		'created_at' => 'created_at',
+		'name' => 'name COLLATE NOCASE',
+		'platform' => 'platform COLLATE NOCASE',
+		'password_updated_at' => 'password_updated_at',
+	];
+
+	/**
+	 * accounts 允许写入的列白名单：插入与部分更新共用
+	 *
+	 * 更新时只处理调用方传入的列（PATCH 语义），未传字段保持原值，
+	 * 避免把没提交的密文列误清空。
+	 */
+	private const ACCOUNT_WRITABLE_COLUMNS = [
+		'name',
+		'platform',
+		'identifier',
+		'group_id',
+		'login_url',
+		'login_via_account_id',
+		'favorite',
+		'password_ct',
+		'password_iv',
+		'totp_ct',
+		'totp_iv',
+		'notes_ct',
+		'notes_iv',
+		'password_updated_at',
+		'last_used_at',
+	];
+
+	/**
+	 * 必须以二进制（PDO::PARAM_LOB）绑定的密文列
+	 */
+	private const ACCOUNT_BLOB_COLUMNS = [
+		'password_ct',
+		'password_iv',
+		'totp_ct',
+		'totp_iv',
+		'notes_ct',
+		'notes_iv',
+	];
+
+	/**
+	 * 授权状态白名单，与建表时的 CHECK 约束保持一致
+	 */
+	private const AUTHORIZATION_STATUSES = ['active', 'revoked'];
+
+	/**
+	 * account_authorizations 允许写入的列白名单
+	 */
+	private const AUTHORIZATION_WRITABLE_COLUMNS = [
+		'account_id',
+		'service',
+		'identifier',
+		'note',
+		'linked_account_id',
+		'status',
+		'granted_at',
+	];
+
+	/**
+	 * 账号库索引清单（name => 建索引 SQL）
+	 *
+	 * 建表与增量迁移共用：CREATE INDEX IF NOT EXISTS 保证可重复执行，
+	 * 老库升级时也能补齐后来新增的索引。
+	 */
+	private const ACCOUNT_INDEXES = [
+		'idx_accounts_name' => 'CREATE INDEX IF NOT EXISTS "idx_accounts_name" ON accounts(name COLLATE NOCASE)',
+		'idx_accounts_platform' => 'CREATE INDEX IF NOT EXISTS "idx_accounts_platform" ON accounts(platform)',
+		'idx_accounts_identifier' => 'CREATE INDEX IF NOT EXISTS "idx_accounts_identifier" ON accounts(identifier)',
+		'idx_accounts_group_id' => 'CREATE INDEX IF NOT EXISTS "idx_accounts_group_id" ON accounts(group_id)',
+		'idx_accounts_updated_at' => 'CREATE INDEX IF NOT EXISTS "idx_accounts_updated_at" ON accounts(updated_at)',
+		'idx_account_authorizations_account_id' => 'CREATE INDEX IF NOT EXISTS "idx_account_authorizations_account_id" ON account_authorizations(account_id)',
+		'idx_account_authorizations_linked' => 'CREATE INDEX IF NOT EXISTS "idx_account_authorizations_linked" ON account_authorizations(linked_account_id)',
+	];
 
 	public function __construct($pdo)
 	{
@@ -385,6 +470,421 @@ class Repository
 		return $stmt->execute();
 	}
 
+	/**
+	 * 账号分组列表（按 sort 升序，其次 id）
+	 *
+	 * 分组是账号库内部字典，与书签 / Skill 的 tags 表完全独立（PRD §5.1.1：
+	 * 模块数据隔离，账号库不接入现有标签体系）。
+	 */
+	public function getAccountGroups(): array
+	{
+		$stmt = $this->pdo->query('SELECT * FROM account_groups ORDER BY sort ASC, id ASC');
+		return $stmt->fetchAll(PDO::FETCH_ASSOC);
+	}
+
+	public function getAccountGroupById(int $id)
+	{
+		$stmt = $this->pdo->prepare('SELECT * FROM account_groups WHERE id = :id');
+		$stmt->execute([':id' => $id]);
+		return $stmt->fetch(PDO::FETCH_ASSOC);
+	}
+
+	/**
+	 * 账号列表查询（PRD §8.2 / §8.3）
+	 *
+	 * 返回 ['total' => 过滤后总数, 'accounts' => 行列表]。total 是分页前的数量，
+	 * 供前端分页；limit / offset 可选，传了才生效（前端默认自己分页）。
+	 *
+	 * 只查账号库自身的表：额外引用 account_groups 仅用于「分组名搜索」，
+	 * 绝不联查 items / tags（PRD §5.1.1 模块数据隔离）；
+	 * 搜索只覆盖明文元数据，密文字段服务端没有密钥，无法也不应做明文搜索。
+	 */
+	public function getAccounts(array $filters = []): array
+	{
+		$where = [];
+		$bindings = [];
+
+		$search = trim((string)($filters['search'] ?? ''));
+		if ($search !== '') {
+			// 四个条件共用 :search 参数；SQLite 允许同名命名参数重复出现。
+			// 分组名可搜（PRD §9.5）：用户常按「工作 / 客户」这类分组词找账号，
+			// 用 IN 子查询而不是 JOIN，避免联表产生重复行、也让 total 与列表口径天然一致。
+			$where[] = "(name LIKE :search ESCAPE '\\'
+				OR platform LIKE :search ESCAPE '\\'
+				OR identifier LIKE :search ESCAPE '\\'
+				OR group_id IN (SELECT id FROM account_groups WHERE name LIKE :search ESCAPE '\\'))";
+			$bindings[':search'] = '%' . $this->escapeLike($search) . '%';
+		}
+
+		$platform = trim((string)($filters['platform'] ?? ''));
+		if ($platform !== '') {
+			$where[] = 'platform = :platform';
+			$bindings[':platform'] = $platform;
+		}
+
+		$group_id = (int)($filters['group_id'] ?? 0);
+		if ($group_id > 0) {
+			$where[] = 'group_id = :group_id';
+			$bindings[':group_id'] = $group_id;
+		}
+
+		$where_sql = empty($where) ? '' : ' WHERE ' . implode(' AND ', $where);
+
+		// 排序白名单：未知 sort 值（含注入尝试）回落到默认「更新时间倒序」
+		$sort = (string)($filters['sort'] ?? '');
+		$sort_sql = self::ACCOUNT_SORTS[$sort] ?? self::ACCOUNT_SORTS['updated_at'];
+		$order = strtolower((string)($filters['order'] ?? ''));
+		$order_sql = $order === 'asc' ? 'ASC' : 'DESC';
+
+		$stmt = $this->pdo->prepare('SELECT COUNT(*) FROM accounts' . $where_sql);
+		$this->bindFilterValues($stmt, $bindings);
+		$stmt->execute();
+		$total = (int)$stmt->fetchColumn();
+
+		// 追加 id 作为次级排序，保证同一时间戳下分页结果稳定、可复现
+		$sql = 'SELECT * FROM accounts' . $where_sql
+			. ' ORDER BY ' . $sort_sql . ' ' . $order_sql . ', id ' . $order_sql;
+
+		$limit = (int)($filters['limit'] ?? 0);
+		$offset = max(0, (int)($filters['offset'] ?? 0));
+		if ($limit > 0) {
+			$sql .= ' LIMIT :limit OFFSET :offset';
+		}
+
+		$stmt = $this->pdo->prepare($sql);
+		$this->bindFilterValues($stmt, $bindings);
+		if ($limit > 0) {
+			$stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+			$stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+		}
+		$stmt->execute();
+
+		return [
+			'total' => $total,
+			'accounts' => $stmt->fetchAll(PDO::FETCH_ASSOC),
+		];
+	}
+
+	public function getAccountById(int $id)
+	{
+		$stmt = $this->pdo->prepare('SELECT * FROM accounts WHERE id = :id');
+		$stmt->execute([':id' => $id]);
+		return $stmt->fetch(PDO::FETCH_ASSOC);
+	}
+
+	/**
+	 * 新建账号，返回自增 id
+	 *
+	 * 密文列（*_ct / *_iv）以二进制原样落库：不做 base64，因为服务端只负责搬运
+	 * 客户端加密后的字节，多做一层编码只会让导出/备份体积变大且增加出错面。
+	 * 用 PARAM_LOB 绑定可避免密文中的 NUL 字节被按 C 字符串截断。
+	 */
+	public function createAccount(array $data)
+	{
+		$date = date('Y-m-d H:i:s');
+		$values = [];
+
+		foreach (self::ACCOUNT_WRITABLE_COLUMNS as $column) {
+			$values[$column] = $data[$column] ?? null;
+		}
+
+		// 非空列兜底（真正的必填校验在控制器里做，这里只保证 NOT NULL 列不会写入 NULL）
+		$values['name'] = (string)($data['name'] ?? '');
+		$values['platform'] = (string)($data['platform'] ?? '');
+		$values['identifier'] = (string)($data['identifier'] ?? '');
+		$values['login_url'] = (string)($data['login_url'] ?? '');
+		$values['favorite'] = !empty($data['favorite']) ? 1 : 0;
+		$values['created_at'] = $data['created_at'] ?? $date;
+		$values['updated_at'] = $data['updated_at'] ?? $date;
+
+		$columns = array_merge(self::ACCOUNT_WRITABLE_COLUMNS, ['created_at', 'updated_at']);
+		$placeholders = array_map(fn($column) => ':' . $column, $columns);
+
+		$stmt = $this->pdo->prepare(
+			'INSERT INTO accounts (' . implode(', ', $columns) . ')
+			VALUES (' . implode(', ', $placeholders) . ')'
+		);
+
+		foreach ($columns as $column) {
+			$this->bindColumnValue($stmt, ':' . $column, $values[$column], in_array($column, self::ACCOUNT_BLOB_COLUMNS, true));
+		}
+
+		$stmt->execute();
+
+		return (int)$this->pdo->lastInsertId();
+	}
+
+	/**
+	 * 部分更新账号：只更新传入的列，未传列保持原值
+	 *
+	 * 密码变更时由控制器显式传入 password_updated_at（PRD §10.3），
+	 * 服务端不猜测密码是否变化。
+	 * 返回 true 仅代表语句执行成功；rowCount 为 0 可能是「不存在」也可能是「值未变化」，
+	 * 是否存在请调用方用 getAccountById 判断。
+	 */
+	public function updateAccount(int $id, array $data): bool
+	{
+		$sets = [];
+		$bindings = [];
+
+		foreach (self::ACCOUNT_WRITABLE_COLUMNS as $column) {
+			if (!array_key_exists($column, $data)) {
+				continue;
+			}
+			$sets[] = $column . ' = :' . $column;
+			$bindings[$column] = $data[$column];
+		}
+
+		$sets[] = 'updated_at = :updated_at';
+		$bindings['updated_at'] = $data['updated_at'] ?? date('Y-m-d H:i:s');
+
+		$stmt = $this->pdo->prepare(
+			'UPDATE accounts SET ' . implode(', ', $sets) . ' WHERE id = :id'
+		);
+
+		foreach ($bindings as $column => $value) {
+			$this->bindColumnValue($stmt, ':' . $column, $value, in_array($column, self::ACCOUNT_BLOB_COLUMNS, true));
+		}
+		$this->bindColumnValue($stmt, ':id', $id);
+
+		return $stmt->execute();
+	}
+
+	/**
+	 * 批量删除账号（事务），返回实际删除的账号行数
+	 *
+	 * SQLite 的外键级联依赖 PRAGMA foreign_keys=ON，而本项目连接未开启该 pragma
+	 * （见 deleteSkill 的同类处理），所以授权关系必须显式删除，否则会留下孤儿行。
+	 * 删除逻辑：
+	 *   1. 删除这些账号自己的授权记录；
+	 *   2. 其他账号授权里的 linked_account_id 指向被删账号时置空（保留授权行本身）；
+	 *   3. 其他账号的 login_via_account_id 指向被删账号时置空（避免悬空引用）。
+	 * 三步与删除本身放在同一事务里，避免中途失败留下半删除状态。
+	 */
+	public function deleteAccounts(array $ids): int
+	{
+		$ids = array_values(array_unique(array_filter(
+			array_map('intval', $ids),
+			fn($id) => $id > 0
+		)));
+
+		if (empty($ids)) {
+			return 0;
+		}
+
+		$sql_in = implode(',', array_fill(0, count($ids), '?'));
+		$date = date('Y-m-d H:i:s');
+
+		$this->pdo->beginTransaction();
+		try {
+			$stmt = $this->pdo->prepare("DELETE FROM account_authorizations WHERE account_id IN ($sql_in)");
+			$stmt->execute($ids);
+
+			$stmt = $this->pdo->prepare(
+				"UPDATE account_authorizations SET linked_account_id = NULL, updated_at = ?
+				WHERE linked_account_id IN ($sql_in)"
+			);
+			$stmt->execute([$date, ...$ids]);
+
+			$stmt = $this->pdo->prepare(
+				"UPDATE accounts SET login_via_account_id = NULL, updated_at = ?
+				WHERE login_via_account_id IN ($sql_in)"
+			);
+			$stmt->execute([$date, ...$ids]);
+
+			$stmt = $this->pdo->prepare("DELETE FROM accounts WHERE id IN ($sql_in)");
+			$stmt->execute($ids);
+			$deleted = $stmt->rowCount();
+
+			$this->pdo->commit();
+
+			return $deleted;
+		} catch (Exception $e) {
+			if ($this->pdo->inTransaction()) {
+				$this->pdo->rollBack();
+			}
+			throw $e;
+		}
+	}
+
+	/**
+	 * 某账号的授权关系列表（按 id 升序）
+	 */
+	public function getAuthorizationsByAccountId(int $account_id): array
+	{
+		$stmt = $this->pdo->prepare(
+			'SELECT * FROM account_authorizations WHERE account_id = :account_id ORDER BY id ASC'
+		);
+		$stmt->execute([':account_id' => $account_id]);
+		return $stmt->fetchAll(PDO::FETCH_ASSOC);
+	}
+
+	public function getAuthorizationById(int $id)
+	{
+		$stmt = $this->pdo->prepare('SELECT * FROM account_authorizations WHERE id = :id');
+		$stmt->execute([':id' => $id]);
+		return $stmt->fetch(PDO::FETCH_ASSOC);
+	}
+
+	/**
+	 * 新建授权关系，返回自增 id
+	 */
+	public function createAuthorization(array $data)
+	{
+		$date = date('Y-m-d H:i:s');
+		$values = [];
+
+		foreach (self::AUTHORIZATION_WRITABLE_COLUMNS as $column) {
+			$values[$column] = $data[$column] ?? null;
+		}
+
+		// service 非空、status 只能取白名单值（与建表 CHECK 约束一致，避免写入非法状态）
+		$values['account_id'] = (int)($data['account_id'] ?? 0);
+		$values['service'] = (string)($data['service'] ?? '');
+		$values['identifier'] = (string)($data['identifier'] ?? '');
+		$values['note'] = (string)($data['note'] ?? '');
+		$values['status'] = $this->normalizeAuthorizationStatus($data['status'] ?? null);
+		$values['created_at'] = $date;
+		$values['updated_at'] = $date;
+
+		$columns = array_merge(self::AUTHORIZATION_WRITABLE_COLUMNS, ['created_at', 'updated_at']);
+		$placeholders = array_map(fn($column) => ':' . $column, $columns);
+
+		$stmt = $this->pdo->prepare(
+			'INSERT INTO account_authorizations (' . implode(', ', $columns) . ')
+			VALUES (' . implode(', ', $placeholders) . ')'
+		);
+
+		foreach ($columns as $column) {
+			$this->bindColumnValue($stmt, ':' . $column, $values[$column]);
+		}
+
+		$stmt->execute();
+
+		return (int)$this->pdo->lastInsertId();
+	}
+
+	/**
+	 * 部分更新授权关系：只更新传入的列
+	 */
+	public function updateAuthorization(int $id, array $data): bool
+	{
+		$sets = [];
+		$bindings = [];
+
+		foreach (self::AUTHORIZATION_WRITABLE_COLUMNS as $column) {
+			if (!array_key_exists($column, $data)) {
+				continue;
+			}
+			$value = $data[$column];
+			if ($column === 'status') {
+				$value = $this->normalizeAuthorizationStatus($value);
+			}
+			$sets[] = $column . ' = :' . $column;
+			$bindings[$column] = $value;
+		}
+
+		$sets[] = 'updated_at = :updated_at';
+		$bindings['updated_at'] = date('Y-m-d H:i:s');
+
+		$stmt = $this->pdo->prepare(
+			'UPDATE account_authorizations SET ' . implode(', ', $sets) . ' WHERE id = :id'
+		);
+
+		foreach ($bindings as $column => $value) {
+			$this->bindColumnValue($stmt, ':' . $column, $value);
+		}
+		$this->bindColumnValue($stmt, ':id', $id);
+
+		return $stmt->execute();
+	}
+
+	public function deleteAuthorization(int $id): bool
+	{
+		$stmt = $this->pdo->prepare('DELETE FROM account_authorizations WHERE id = :id');
+		return $stmt->execute([':id' => $id]);
+	}
+
+	/**
+	 * 账号库统计（锁定页展示，PRD §10.1）
+	 *
+	 * totpEnabled 只判断 totp_ct 是否为空，不需要解密，服务端也能算。
+	 */
+	public function getAccountStats(): array
+	{
+		$total = (int)$this->pdo->query('SELECT COUNT(*) FROM accounts')->fetchColumn();
+		$totp_enabled = (int)$this->pdo->query('SELECT COUNT(*) FROM accounts WHERE totp_ct IS NOT NULL')->fetchColumn();
+		$platform_count = (int)$this->pdo->query('SELECT COUNT(DISTINCT platform) FROM accounts')->fetchColumn();
+
+		return [
+			'total' => $total,
+			'totpEnabled' => $totp_enabled,
+			'platformCount' => $platform_count,
+		];
+	}
+
+	/**
+	 * 状态归一：非法或缺失一律回落到 active，与建表 CHECK 约束保持一致
+	 */
+	private function normalizeAuthorizationStatus($status): string
+	{
+		$status = (string)$status;
+		return in_array($status, self::AUTHORIZATION_STATUSES, true) ? $status : 'active';
+	}
+
+	/**
+	 * 绑定过滤参数（搜索平台分组等纯文本/整数条件，不含密文）
+	 */
+	private function bindFilterValues(PDOStatement $stmt, array $bindings): void
+	{
+		foreach ($bindings as $placeholder => $value) {
+			if (is_int($value)) {
+				$stmt->bindValue($placeholder, $value, PDO::PARAM_INT);
+			} else {
+				$stmt->bindValue($placeholder, (string)$value, PDO::PARAM_STR);
+			}
+		}
+	}
+
+	/**
+	 * 按值类型绑定列值：NULL → PARAM_NULL，密文 → PARAM_LOB，整数 → PARAM_INT，其余 → 字符串
+	 */
+	private function bindColumnValue(PDOStatement $stmt, string $placeholder, $value, bool $is_blob = false): void
+	{
+		if ($value === null) {
+			$stmt->bindValue($placeholder, null, PDO::PARAM_NULL);
+			return;
+		}
+
+		if ($is_blob) {
+			$stmt->bindValue($placeholder, $value, PDO::PARAM_LOB);
+			return;
+		}
+
+		if (is_bool($value)) {
+			$stmt->bindValue($placeholder, (int)$value, PDO::PARAM_INT);
+			return;
+		}
+
+		if (is_int($value)) {
+			$stmt->bindValue($placeholder, $value, PDO::PARAM_INT);
+			return;
+		}
+
+		$stmt->bindValue($placeholder, (string)$value, PDO::PARAM_STR);
+	}
+
+	/**
+	 * 转义 LIKE 通配符
+	 *
+	 * 用户搜索词里的 % / _ / \ 若不当普通字符处理，会被当成通配符导致结果异常；
+	 * 反斜杠必须先转义，否则会把自己转义后的内容再次转义。
+	 */
+	private function escapeLike(string $value): string
+	{
+		return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $value);
+	}
+
 	public function setItemTags(array $tag_ids, int $item_id): bool
 	{
 		// 1. delete all tags relations
@@ -651,6 +1151,24 @@ class Repository
 				return false;
 			}
 
+			// 账号库三表（PRD §6.2 / §6.3 / §6.4）：注意创建顺序，accounts 依赖 account_groups，
+			// account_authorizations 依赖 accounts
+			if (!$this->setupAccountGroupsTable()) {
+				return false;
+			}
+
+			if (!$this->setupAccountsTable()) {
+				return false;
+			}
+
+			if (!$this->setupAccountAuthorizationsTable()) {
+				return false;
+			}
+
+			if (!$this->createAccountIndexes()) {
+				return false;
+			}
+
 			return true;
 		} catch (Exception $e) {
 			return false;
@@ -673,6 +1191,28 @@ class Repository
 
 		if (!$this->checkVaultMetaTableExists() && !$this->setupVaultMetaTable()) {
 			throw new Exception('Failed to set up vault_meta table');
+		}
+
+		// 账号库三表：老库在这里补齐（顺序同 setupDatabase：分组 → 账号 → 授权）
+		if (!$this->checkAccountGroupsTableExists() && !$this->setupAccountGroupsTable()) {
+			throw new Exception('Failed to set up account_groups table');
+		}
+
+		if (!$this->checkAccountsTableExists() && !$this->setupAccountsTable()) {
+			throw new Exception('Failed to set up accounts table');
+		}
+
+		if (!$this->checkAccountAuthorizationsTableExists() && !$this->setupAccountAuthorizationsTable()) {
+			throw new Exception('Failed to set up account_authorizations table');
+		}
+
+		// 索引与种子数据每次都做幂等补齐：索引清单可能新增，分组也可能因历史原因缺失
+		if (!$this->createAccountIndexes()) {
+			throw new Exception('Failed to create indexes for account vault tables');
+		}
+
+		if (!$this->seedAccountGroups()) {
+			throw new Exception('Failed to seed account groups');
 		}
 
 		if (!$this->checkTagIndexExists() && !$this->createTagIndex()) {
@@ -856,6 +1396,185 @@ class Repository
 		$stmt = $this->pdo->query("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'idx_tags_title_parent' AND tbl_name = 'tags';");
 		return (bool)$stmt->fetchColumn();
 
+	}
+
+	/**
+	 * 检查 account_groups 表是否存在（老库升级用）
+	 */
+	public function checkAccountGroupsTableExists()
+	{
+		try {
+			$stmt = $this->pdo->query("SELECT name FROM sqlite_master WHERE type='table' AND name='account_groups'");
+			return $stmt->fetch() !== false;
+		} catch (Exception $e) {
+			return false;
+		}
+	}
+
+	/**
+	 * 创建 account_groups 表并写入默认分组（PRD §6.3）
+	 *
+	 * name 加 UNIQUE：既是业务约束（分组名不重复），也是种子数据幂等的前提
+	 * ——INSERT OR IGNORE 依赖唯一冲突来跳过已存在的分组。
+	 */
+	public function setupAccountGroupsTable()
+	{
+		try {
+			$this->pdo->exec('CREATE TABLE IF NOT EXISTS account_groups (
+				id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+				name TEXT NOT NULL UNIQUE,
+				sort INTEGER NOT NULL DEFAULT(0)
+			)');
+			return $this->seedAccountGroups();
+		} catch (Exception $e) {
+			return false;
+		}
+	}
+
+	/**
+	 * 写入默认分组：个人 / 工作 / 客户 / 归档
+	 *
+	 * 幂等：name 有 UNIQUE 约束，配合 INSERT OR IGNORE，无论 setupDatabase() 与
+	 * migrate() 重复执行多少次都不会产生重复行，也不会覆盖已存在分组的 sort
+	 * （用户后续调整过排序时不会被重置）。
+	 */
+	public function seedAccountGroups(): bool
+	{
+		try {
+			$stmt = $this->pdo->prepare('INSERT OR IGNORE INTO account_groups (name, sort) VALUES (:name, :sort)');
+			$defaults = ['个人' => 1, '工作' => 2, '客户' => 3, '归档' => 4];
+			foreach ($defaults as $name => $sort) {
+				$stmt->execute([':name' => $name, ':sort' => $sort]);
+			}
+			return true;
+		} catch (Exception $e) {
+			return false;
+		}
+	}
+
+	/**
+	 * 检查 accounts 表是否存在（老库升级用）
+	 */
+	public function checkAccountsTableExists()
+	{
+		try {
+			$stmt = $this->pdo->query("SELECT name FROM sqlite_master WHERE type='table' AND name='accounts'");
+			return $stmt->fetch() !== false;
+		} catch (Exception $e) {
+			return false;
+		}
+	}
+
+	/**
+	 * 创建 accounts 表（PRD §6.2）
+	 *
+	 * 密文字段全部可空：密码允许为空（第三方登录场景，PRD §10.2），
+	 * 2FA / 备注同理，用 NULL 表示「没有该字段」，与「空字符串密文」区分开。
+	 * 密文只存客户端生成的二进制，服务端不持有密钥。
+	 */
+	public function setupAccountsTable()
+	{
+		try {
+			$this->pdo->exec('CREATE TABLE IF NOT EXISTS accounts (
+				id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+				name TEXT NOT NULL,
+				platform TEXT NOT NULL,
+				identifier TEXT NOT NULL,
+				group_id INTEGER DEFAULT(NULL),
+				login_url TEXT NOT NULL DEFAULT \'\',
+				login_via_account_id INTEGER DEFAULT(NULL),
+				favorite INTEGER NOT NULL DEFAULT(0) CHECK (favorite IN (0, 1)),
+				password_ct BLOB DEFAULT(NULL),
+				password_iv BLOB DEFAULT(NULL),
+				totp_ct BLOB DEFAULT(NULL),
+				totp_iv BLOB DEFAULT(NULL),
+				notes_ct BLOB DEFAULT(NULL),
+				notes_iv BLOB DEFAULT(NULL),
+				password_updated_at TEXT DEFAULT(NULL),
+				last_used_at TEXT DEFAULT(NULL),
+				created_at TEXT DEFAULT(NULL),
+				updated_at TEXT DEFAULT(NULL),
+				FOREIGN KEY(group_id) REFERENCES account_groups(id) ON DELETE SET NULL,
+				FOREIGN KEY(login_via_account_id) REFERENCES accounts(id) ON DELETE SET NULL
+			)');
+			return true;
+		} catch (Exception $e) {
+			return false;
+		}
+	}
+
+	/**
+	 * 检查 account_authorizations 表是否存在（老库升级用）
+	 */
+	public function checkAccountAuthorizationsTableExists()
+	{
+		try {
+			$stmt = $this->pdo->query("SELECT name FROM sqlite_master WHERE type='table' AND name='account_authorizations'");
+			return $stmt->fetch() !== false;
+		} catch (Exception $e) {
+			return false;
+		}
+	}
+
+	/**
+	 * 创建 account_authorizations 表（PRD §6.4）
+	 *
+	 * status 用 CHECK 兜住取值，避免脏数据导致前端状态渲染异常；
+	 * account_id / linked_account_id 都只能指向账号库内部账号（PRD §5.1.1），
+	 * 不引用 items / tags。删除账号时的级联由 deleteAccounts() 在应用层显式完成
+	 * （本项目连接未开启 PRAGMA foreign_keys，声明级联只作为语义说明与将来开启时的保障）。
+	 */
+	public function setupAccountAuthorizationsTable()
+	{
+		try {
+			$this->pdo->exec('CREATE TABLE IF NOT EXISTS account_authorizations (
+				id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+				account_id INTEGER NOT NULL,
+				service TEXT NOT NULL,
+				identifier TEXT NOT NULL DEFAULT \'\',
+				note TEXT NOT NULL DEFAULT \'\',
+				linked_account_id INTEGER DEFAULT(NULL),
+				status TEXT NOT NULL DEFAULT \'active\' CHECK (status IN (\'active\', \'revoked\')),
+				granted_at TEXT DEFAULT(NULL),
+				created_at TEXT DEFAULT(NULL),
+				updated_at TEXT DEFAULT(NULL),
+				FOREIGN KEY(account_id) REFERENCES accounts(id) ON DELETE CASCADE,
+				FOREIGN KEY(linked_account_id) REFERENCES accounts(id) ON DELETE SET NULL
+			)');
+			return true;
+		} catch (Exception $e) {
+			return false;
+		}
+	}
+
+	/**
+	 * 索引是否存在
+	 */
+	private function indexExists(string $name): bool
+	{
+		$stmt = $this->pdo->prepare("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = :name");
+		$stmt->execute([':name' => $name]);
+		return (bool)$stmt->fetchColumn();
+	}
+
+	/**
+	 * 补齐账号库索引（幂等）
+	 *
+	 * 逐个检查后再建，避免每次请求都执行 DDL；
+	 * 老库升级时同样会走到这里，所以新增索引只需加进 ACCOUNT_INDEXES 常量。
+	 */
+	public function createAccountIndexes(): bool
+	{
+		try {
+			foreach (self::ACCOUNT_INDEXES as $name => $sql) {
+				if (!$this->indexExists($name)) {
+					$this->pdo->exec($sql);
+				}
+			}
+			return true;
+		} catch (Exception $e) {
+			return false;
+		}
 	}
 
 	public function createTagIndex()

@@ -63,7 +63,7 @@ export type LayoutType = 'table' | 'cards' | 'list';
 
 export type TagFilterType = number | 'none' | null;
 
-export type ModuleKey = 'bookmarks' | 'skills';
+export type ModuleKey = 'bookmarks' | 'skills' | 'accounts';
 
 export type SkillSourceType = 'github' | 'upload';
 
@@ -238,4 +238,55 @@ export type AccountAuthorizationType = {
   granted_at?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
+};
+
+/** 账号详情 = 元数据 + 密文 + 授权关系（GET /api/accounts/detail） */
+export type AccountDetailType = AccountType & {
+  authorizations: AccountAuthorizationType[];
+};
+
+/**
+ * 账号列表查询参数（GET /api/accounts，PRD §8.2）。
+ * 都不传时后端返回全量（侧栏平台计数依赖全量数据派生）。
+ */
+export type AccountListParamsType = {
+  search?: string;
+  /** 平台精确匹配 */
+  platform?: string | null;
+  /** 分组 id 筛选 */
+  group?: number | null;
+  /** 排序列名，走 Repository 白名单：updated_at / created_at / name / platform / password_updated_at */
+  sort?: string;
+  order?: 'asc' | 'desc';
+  page?: number;
+  perPage?: number;
+};
+
+/**
+ * 新建账号的请求体（POST /api/accounts）。
+ * secrets 里的密文由前端用 DEK 加密后传入，服务端只搬运不解密（PRD §6.5 / §7.5）。
+ */
+export type AccountInputType = {
+  name: string;
+  platform: string;
+  identifier: string;
+  login_url?: string | null;
+  favorite?: boolean;
+  group_id?: number | null;
+  login_via_account_id?: number | null;
+  secrets?: AccountSecretsType | null;
+};
+
+/**
+ * 新建授权关系的请求体（POST /api/accounts/authorizations）。
+ * 授权字段是明文元数据（站点 / 站点账号 / 备注 / 授权日期），不含任何凭据（PRD §6.4）。
+ */
+export type AuthorizationInputType = {
+  account_id: number;
+  service: string;
+  identifier?: string | null;
+  note?: string | null;
+  linked_account_id?: number | null;
+  status?: AccountAuthorizationStatusType;
+  granted_at?: string | null;
 };

@@ -53,7 +53,8 @@ export function Pagination<TData>({
               <SelectValue />
             </SelectTrigger>
             <SelectContent side="top">
-              {[10, 25, 50, 100].map((pageSize) => (
+              {/* 每页条数选项三模块共用（PRD §9.4）：3 的倍数，默认 24 */}
+              {[9, 24, 48, 96].map((pageSize) => (
                 <SelectItem key={pageSize} value={`${pageSize}`}>
                   {pageSize}
                 </SelectItem>

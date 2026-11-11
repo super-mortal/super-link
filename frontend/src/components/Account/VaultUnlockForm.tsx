@@ -20,6 +20,9 @@ type UnlockFormValues = z.infer<typeof unlockSchema>;
 export const formatAutoLockText = (minutes: number): string =>
   minutes > 0 ? `闲置 ${minutes} 分钟自动锁定，刷新页面也会立即锁定` : '已关闭自动锁定，刷新页面仍会立即锁定';
 
+/** 主密码输入框的 id：锁定态工具栏的「解锁账号库」按钮靠它把焦点送进来 */
+export const VAULT_PASSWORD_INPUT_ID = 'vault-master-password';
+
 /**
  * 解锁表单（PRD §7.2 / §10.1）。
  *
@@ -50,7 +53,14 @@ export const VaultUnlockForm = observer(() => {
             <FormItem>
               <FormLabel>主密码</FormLabel>
               <FormControl>
-                <Input type="password" autoComplete="current-password" placeholder="输入主密码" autoFocus {...field} />
+                <Input
+                  id={VAULT_PASSWORD_INPUT_ID}
+                  type="password"
+                  autoComplete="current-password"
+                  placeholder="输入主密码"
+                  autoFocus
+                  {...field}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>

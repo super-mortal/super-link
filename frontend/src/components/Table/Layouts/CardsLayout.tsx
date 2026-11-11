@@ -5,7 +5,13 @@ import { MODULES } from '@/lib/modules.ts';
 import { TagBadge } from '@/components/Table/Fields/TagBadge.tsx';
 import { ItemSourceLine, SourceBadge, UpdateBadge } from '@/components/Table/Fields/SourceBadge.tsx';
 import { ModuleCardActions, useModuleItemOpen } from '@/components/Table/Fields/ModuleCardActions.tsx';
-import { formatCardDate, isSkillItem, normalizedSourceURL, tagIDsOf } from '@/components/Table/Fields/moduleItem.ts';
+import {
+  formatCardDate,
+  isAccountItem,
+  isSkillItem,
+  normalizedSourceURL,
+  tagIDsOf,
+} from '@/components/Table/Fields/moduleItem.ts';
 import type { ModuleLayoutProps } from '@/components/Table/Layouts/layoutTypes.ts';
 
 /**
@@ -26,6 +32,7 @@ export const CardsLayout = ({ rows, module, visibleFields }: ModuleLayoutProps) 
         const item = row.original;
         const isSelected = row.getIsSelected();
         const skill = isSkillItem(item);
+        const account = isAccountItem(item);
         const tagIDs = tagIDsOf(item);
 
         // Skill 的来源行没有对应字段 key（fields 只有描述/标签/安装时间/指纹），因此始终展示
@@ -78,13 +85,13 @@ export const CardsLayout = ({ rows, module, visibleFields }: ModuleLayoutProps) 
                         : undefined
                     }
                   />
-                ) : (
+                ) : account ? null : ( // 账号有独立的 Account* 布局（PRD §9.3），这里只保证类型完备
                   <ItemSourceLine text={item.url} href={normalizedSourceURL(item.url)} />
                 ))}
             </div>
 
             {/* 无描述也占位，保证多张卡片纵向对齐；字段被隐藏时整块不渲染 */}
-            {showDescription && (
+            {showDescription && !account && (
               <div className="min-h-12">
                 {item.description ? (
                   <p className="text-muted-foreground line-clamp-2 text-sm leading-6 wrap-anywhere">

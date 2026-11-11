@@ -5,7 +5,13 @@ import { MODULES } from '@/lib/modules.ts';
 import { TagBadge } from '@/components/Table/Fields/TagBadge.tsx';
 import { ItemSourceLine, SourceBadge, UpdateBadge } from '@/components/Table/Fields/SourceBadge.tsx';
 import { ModuleCardActions, useModuleItemOpen } from '@/components/Table/Fields/ModuleCardActions.tsx';
-import { formatCardDate, isSkillItem, normalizedSourceURL, tagIDsOf } from '@/components/Table/Fields/moduleItem.ts';
+import {
+  formatCardDate,
+  isAccountItem,
+  isSkillItem,
+  normalizedSourceURL,
+  tagIDsOf,
+} from '@/components/Table/Fields/moduleItem.ts';
 import type { ModuleLayoutProps } from '@/components/Table/Layouts/layoutTypes.ts';
 
 /**
@@ -23,11 +29,12 @@ export const ListLayout = ({ rows, module, visibleFields }: ModuleLayoutProps) =
         const item = row.original;
         const isSelected = row.getIsSelected();
         const skill = isSkillItem(item);
+        const account = isAccountItem(item);
         const tagIDs = tagIDsOf(item);
 
         const showLink = skill || visible.has('url');
         const showTags = visible.has('tags') && tagIDs.length > 0;
-        const showDescription = visible.has('description') && Boolean(item.description);
+        const showDescription = visible.has('description') && !account && Boolean(item.description);
         const showDate = visible.has(skill ? 'installed_at' : 'created_at');
 
         return (
@@ -55,7 +62,7 @@ export const ListLayout = ({ rows, module, visibleFields }: ModuleLayoutProps) =
                           : undefined
                       }
                     />
-                  ) : (
+                  ) : account ? null : ( // 账号有独立的 Account* 布局（PRD §9.3），这里只保证类型完备
                     <ItemSourceLine text={item.url} href={normalizedSourceURL(item.url)} />
                   ))}
 
@@ -69,7 +76,7 @@ export const ListLayout = ({ rows, module, visibleFields }: ModuleLayoutProps) =
                   </div>
                 )}
 
-                {showDescription && (
+                {showDescription && !account && (
                   <p className="text-muted-foreground line-clamp-2 text-sm leading-6 wrap-anywhere">
                     {item.description}
                   </p>

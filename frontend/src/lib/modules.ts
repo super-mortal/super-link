@@ -1,10 +1,13 @@
-import type { ItemType, ModuleKey, SkillType } from '@/lib/types.ts';
+import type { AccountType, ItemType, ModuleKey, SkillType } from '@/lib/types.ts';
 
 /**
- * 模块注册表：书签 / Skill 的全部差异（标题、日期、字段、排序、路由、文案）都在这里，
+ * 模块注册表：书签 / Skill / 账号库的全部差异（标题、日期、字段、排序、路由、文案）都在这里，
  * 侧栏、工具栏、卡片、列表、表格、分页统一以 ModuleConfigType 签名消费，不再各自判断模块。
+ *
+ * 账号库的数据形态与另外两个模块不同（独立表与接口，PRD §5.1.1），但配置签名保持一致：
+ * 侧栏与后续的 Account* 布局（PRD §9.3）复用同一份配置。
  */
-export type ModuleItemType = ItemType | SkillType;
+export type ModuleItemType = ItemType | SkillType | AccountType;
 
 export type ModuleFieldType = {
   readonly key: string;
@@ -53,6 +56,9 @@ export type ModuleConfigType = {
 /** 用实际数据形态判别：书签无 source_type，Skill 必有 */
 const isSkillItem = (item: ModuleItemType): item is SkillType => 'source_type' in item;
 
+/** 账号判别：账号必有 platform，书签 / Skill 没有该字段 */
+const isAccountItem = (item: ModuleItemType): item is AccountType => 'platform' in item;
+
 const asText = (value: unknown): string | null => {
   if (value === null || value === undefined || value === '') {
     return null;
@@ -60,10 +66,20 @@ const asText = (value: unknown): string | null => {
   return String(value);
 };
 
-const titleOfItem = (item: ModuleItemType): string => (isSkillItem(item) ? item.name : item.title);
+const titleOfItem = (item: ModuleItemType): string => {
+  if (isAccountItem(item)) {
+    return item.name;
+  }
+  return isSkillItem(item) ? item.name : item.title;
+};
 
-const dateOfItem = (item: ModuleItemType): string | null =>
-  isSkillItem(item) ? asText(item.installed_at) : asText(item.created_at);
+const dateOfItem = (item: ModuleItemType): string | null => {
+  // 账号库的「日期」取更新时间（dateLabel 为「更新时间」），与默认排序保持一致
+  if (isAccountItem(item)) {
+    return asText(item.updated_at);
+  }
+  return isSkillItem(item) ? asText(item.installed_at) : asText(item.created_at);
+};
 
 const updatedOfItem = (item: ModuleItemType): string | null => asText(item.updated_at);
 
@@ -131,20 +147,63 @@ const SKILLS_MODULE = {
   },
 } as const satisfies ModuleConfigType;
 
+/**
+ * 账号库（PRD §9.1）。字段里的密码 / 2FA / 备注都是密文字段：
+ * 布局只渲染状态与掩码，明文按需拉详情解密后进 vaultSession 内存缓存。
+ */
+const ACCOUNTS_MODULE = {
+  key: 'accounts',
+  label: '账号库',
+  noun: '账号',
+  pagination: { count: '账号', size: '条' },
+  sectionLabel: '平台',
+  dateLabel: '更新时间',
+  titleLabel: '账号',
+  addLabel: '添加账号',
+  titleOf: titleOfItem,
+  dateOf: dateOfItem,
+  updatedOf: updatedOfItem,
+  fields: [
+    { key: 'platform', label: '平台' },
+    { key: 'identifier', label: '账号标识' },
+    { key: 'password', label: '密码' },
+    { key: 'totp', label: '2FA' },
+    { key: 'authorizations', label: '授权' },
+    { key: 'notes', label: '备注' },
+  ],
+  // sortBy 与后端 Repository::ACCOUNT_SORTS 白名单列名一一对应（PRD §8.2）
+  sorts: [
+    { key: 'updated-desc', label: '更新时间（新→旧）', sortBy: 'updated_at', order: 'desc' },
+    { key: 'created-desc', label: '创建时间（新→旧）', sortBy: 'created_at', order: 'desc' },
+    { key: 'name-asc', label: '名称（A→Z）', sortBy: 'name', order: 'asc' },
+    { key: 'platform-asc', label: '平台（A→Z）', sortBy: 'platform', order: 'asc' },
+    { key: 'password-updated-asc', label: '密码最久未改', sortBy: 'password_updated_at', order: 'asc' },
+  ],
+  defaultSort: 'updated-desc',
+  routes: {
+    // 新建走弹窗，不占路由
+    create: null,
+    detail: (id: number) => `/accounts/${id}`,
+  },
+} as const satisfies ModuleConfigType;
+
 /** 遍历顺序即侧栏模块顺序 */
-export const MODULE_KEYS = ['bookmarks', 'skills'] as const satisfies readonly ModuleKey[];
+export const MODULE_KEYS = ['bookmarks', 'skills', 'accounts'] as const satisfies readonly ModuleKey[];
 
 export const DEFAULT_MODULE: ModuleKey = 'bookmarks';
 
 export const MODULES: Record<ModuleKey, ModuleConfigType> = {
   bookmarks: BOOKMARKS_MODULE,
   skills: SKILLS_MODULE,
+  accounts: ACCOUNTS_MODULE,
 };
 
 export type BookmarkFieldKey = (typeof BOOKMARKS_MODULE)['fields'][number]['key'];
 export type SkillFieldKey = (typeof SKILLS_MODULE)['fields'][number]['key'];
-export type ModuleFieldKey = BookmarkFieldKey | SkillFieldKey;
+export type AccountFieldKey = (typeof ACCOUNTS_MODULE)['fields'][number]['key'];
+export type ModuleFieldKey = BookmarkFieldKey | SkillFieldKey | AccountFieldKey;
 
 export type BookmarkSortKey = (typeof BOOKMARKS_MODULE)['sorts'][number]['key'];
 export type SkillSortKey = (typeof SKILLS_MODULE)['sorts'][number]['key'];
-export type ModuleSortKey = BookmarkSortKey | SkillSortKey;
+export type AccountSortKey = (typeof ACCOUNTS_MODULE)['sorts'][number]['key'];
+export type ModuleSortKey = BookmarkSortKey | SkillSortKey | AccountSortKey;

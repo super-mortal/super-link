@@ -66,12 +66,15 @@ composer install --no-dev --optimize-autoloader   # 运行时依赖：guzzlehttp
 ### 前端（`frontend/src/`）
 
 - 入口 `main.tsx` → `App.tsx`（react-router-dom 路由表），全局唯一样式 `index.css`。
-- 路由：`/` 列表、`/login`、`/setup` 及三步引导、`/create-item`、`/edit-item/:itemID`、`/skills/:skillID`、`*` 404。
+- 路由：`/` 列表、`/login`、`/setup` 及三步引导、`/create-item`、`/edit-item/:itemID`、`/skills/:skillID`、`/accounts` 账号库（锁定/解锁形态由页面自己渲染，守卫只拉元信息）、`*` 404。
 - 布局：`layouts/Dashboard.tsx`（侧边栏 + 可拖拽 ResizablePanel + 主内容区，挂全局 EditItemDialog/SettingsDialog）、`Auth`、`Onboarding`、`Loading`、`NotFound`。
-- **模块注册表 `lib/modules.ts`**：书签/Skill 的全部差异（label、noun、字段、排序、路由、文案）集中在此。侧边栏、工具栏、三种布局、分页统一消费 `ModuleConfigType`。**新增模块或改模块行为优先改这里，不要在组件里写 if-else 模块判断**。
-- 状态管理：MobX（`store/mainStore.ts` 数据 + `store/preferencesStore.ts` 偏好），`observer` + `StoreContext` 注入。
+- **模块注册表 `lib/modules.ts`**：书签/Skill/账号库的全部差异（label、noun、字段、排序、路由、文案）集中在此。侧边栏、工具栏、三种布局、分页统一消费 `ModuleConfigType`。**新增模块或改模块行为优先改这里，不要在组件里写 if-else 模块判断**。
+- 状态管理：MobX（`store/mainStore.ts` 数据 + `store/preferencesStore.ts` 偏好 + `store/vaultStore.ts` 账号库 UI 态），`observer` + `StoreContext` 注入。
   **所有 API 调用集中在 mainStore；endpoint 常量在 `store/api.ts`；组件不直接 fetch**。
+  账号库数据用独立 observable（`accounts` / `accountGroups` / `accountTotal` / `currentAccount`），与书签/Skill 完全隔离（PRD §5.1.1）。
 - 列表页状态与 URL 同步：`page`、`per-page`、`sort`、`order`、`search`、`tag`（`tag=none` 表示未标记），见 `hooks/useUrlState.ts`、`hooks/useItemListState.ts`。
+  账号库额外用 `platform` / `group`（见 `hooks/useAccountListState.ts`），**不写 `tag`**（不复用标签体系）。
+- 分页每页条数选项 **9 / 24 / 48 / 96，默认 24**，三模块共用（`components/Table/Controls/Pagination.tsx` + `ModuleList.tsx` 的默认值）。
 - 样式：Tailwind CSS v4；设计 token 是 `index.css` 中的 CSS 变量（oklch，`:root`/`.dark` 两套）。**禁止写死颜色，一律用语义变量/类**。
 - 组件库：`components/ui/` 下 37 个 shadcn 风格原语；业务组件按 `Sidebar/`、`Table/`、`EditItem/`、`Settings/` 分目录；三种布局在 `components/Table/Layouts/`。
 - 表单：react-hook-form + zod（schema 在 `lib/types.ts`）。
@@ -102,6 +105,7 @@ composer install --no-dev --optimize-autoloader   # 运行时依赖：guzzlehttp
 
 - **新增 API**：`routes.php` 注册 → `controllers/` 新建控制器 → `store/api.ts` 加 endpoint → `mainStore` 加方法；确认响应 envelope 与前端调用方一致。
 - **新增前端模块**：`lib/modules.ts` 增加配置并加入 `MODULE_KEYS`；侧栏图标在 `components/Sidebar/ModuleSwitcher.tsx`；数据加载与 API 方法补在 `mainStore`；后端补路由/控制器/存储。
+  账号库这类「独立路由 + 需解锁」的模块：侧栏点击走 `navigate` 而不是 `store.setModule`（列表页 `ModuleList` 暂不承载它），侧栏分区按路由切换（`AppSidebar` 里 `isAccountsRoute` 决定渲染 `NavTags` 还是 `NavPlatforms`）。
 - **改模块文案/字段**：只改 `lib/modules.ts`；表格列、字段勾选、卡片/列表门控都由它派生。
 - **改排序**：同时改 `lib/modules.ts` 的 `sorts` 与后端控制器里的排序映射（如 `SkillsGetController::SORTS`）。
 - **改表结构**：`Repository::setupDatabase()` + `Repository::migrate()` 双写，保证新库与老库都能升级。

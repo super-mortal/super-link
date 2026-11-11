@@ -46,6 +46,20 @@ export const API_ENDPOINTS = {
     changeMaster: `${API_BASE}/vault/change-master`,
     reset: `${API_BASE}/vault/reset`,
   },
+  /** 账号（PRD §8.2）：只传元数据与密文，任何端点都不返回明文 */
+  accounts: {
+    list: `${API_BASE}/accounts`,
+    detail: (id: number) => `${API_BASE}/accounts/detail?id=${id}`,
+    create: `${API_BASE}/accounts`,
+    /** PATCH /api/accounts：id 放请求体，后端从合并后的入参里读 */
+    update: `${API_BASE}/accounts`,
+    delete: `${API_BASE}/accounts/delete`,
+    authorizations: {
+      create: `${API_BASE}/accounts/authorizations`,
+      update: `${API_BASE}/accounts/authorizations/update`,
+      delete: `${API_BASE}/accounts/authorizations/delete`,
+    },
+  },
   setup: {
     setup: `${API_BASE}/setup/database`,
   },

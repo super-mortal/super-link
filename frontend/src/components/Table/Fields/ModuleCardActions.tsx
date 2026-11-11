@@ -17,7 +17,7 @@ import {
 import { DeleteDialog } from '@/components/Table/Controls/DeleteDialog.tsx';
 import { Spinner } from '@/components/ui/spinner.tsx';
 import { cn } from '@/lib/utils.ts';
-import { isSkillItem } from '@/components/Table/Fields/moduleItem.ts';
+import { isAccountItem, isSkillItem } from '@/components/Table/Fields/moduleItem.ts';
 
 const actionButtonClass =
   'onhover-visible text-muted-foreground bg-background hover:bg-accent hover:text-foreground flex h-8 shrink-0 items-center justify-center rounded-md border px-2 shadow-xs transition-colors';
@@ -82,7 +82,8 @@ export const ModuleCardActions = observer(({ module, item }: { module: ModuleKey
   };
 
   const makeCopy = async () => {
-    if (isSkill) {
+    // 「创建副本」只属于书签：Skill 是安装产物，账号的密文更不该被复制成第二份
+    if (isSkill || isAccountItem(item)) {
       return;
     }
     const created = await store.createItem({ ...item });

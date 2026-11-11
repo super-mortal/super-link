@@ -24,7 +24,7 @@ import { CardsLayout } from '../components/Table/Layouts/CardsLayout.tsx';
 import { LayoutType, ModuleKey, TagFilterType, TagsObjectType } from '@/lib/types.ts';
 import { ModuleCardActions } from '@/components/Table/Fields/ModuleCardActions.tsx';
 import { SourceBadge, UpdateBadge } from '@/components/Table/Fields/SourceBadge.tsx';
-import { isSkillItem, tagIDsOf } from '@/components/Table/Fields/moduleItem.ts';
+import { isSkillItem, isAccountItem, tagIDsOf } from '@/components/Table/Fields/moduleItem.ts';
 import Loading from '@/layouts/Loading.tsx';
 import {
   cn,
@@ -62,9 +62,12 @@ const buildSearchText = (item: ModuleItemType, tags: TagsObjectType): string => 
   const tagTitles = tagIDsOf(item)
     .map((tagID) => tags[tagID]?.title ?? '')
     .join(' ');
-  const ownFields = isSkillItem(item)
-    ? [item.name, item.source_url, item.description]
-    : [item.title, item.url, item.description];
+  // 账号库只搜名称 / 平台 / 账号标识：密文字段服务端不可搜（PRD §9.5）
+  const ownFields = isAccountItem(item)
+    ? [item.name, item.platform, item.identifier]
+    : isSkillItem(item)
+      ? [item.name, item.source_url, item.description]
+      : [item.title, item.url, item.description];
 
   return [...ownFields, tagTitles]
     .filter((value) => Boolean(value))
@@ -136,6 +139,7 @@ const tagsColumn: ColumnDef<ModuleItemType> = {
 const TITLE_ACCESSOR_KEY: Record<ModuleKey, 'title' | 'name'> = {
   bookmarks: 'title',
   skills: 'name',
+  accounts: 'name',
 };
 
 /** 可勾选字段的单元格定义：键与 MODULES[module].fields 的 key 一一对应 */
@@ -257,11 +261,15 @@ const buildColumnOrder = (module: ModuleKey): string[] => [
 const MODULE_COLUMNS: Record<ModuleKey, ColumnDef<ModuleItemType>[]> = {
   bookmarks: buildModuleColumns('bookmarks'),
   skills: buildModuleColumns('skills'),
+  // 账号库的三种布局在后续任务接入（PRD §9.3 的 Account* 组件），这里只放标题列
+  // 保证 Record 完整；模块切换走路由跳转，ModuleList 不会以 accounts 模块渲染
+  accounts: [buildTitleColumn('accounts')],
 };
 
 const MODULE_COLUMN_ORDER: Record<ModuleKey, string[]> = {
   bookmarks: buildColumnOrder('bookmarks'),
   skills: buildColumnOrder('skills'),
+  accounts: ['name', 'actions'],
 };
 
 const Table = observer(() => {
@@ -293,7 +301,8 @@ const Table = observer(() => {
 
       return {
         pageIndexParam: Number(searchParams.get('page') ?? 1) - 1,
-        pageSizeParam: Number(searchParams.get('per-page') ?? 25),
+        // 默认每页 24 条，与分页下拉选项 9 / 24 / 48 / 96 一致（PRD §9.4，三模块共用）
+        pageSizeParam: Number(searchParams.get('per-page') ?? 24),
         sortByParam: sortBy,
         isSortOrderDescParam: isDesc,
         searchKeywordParam: searchParams.get('search') ?? '',

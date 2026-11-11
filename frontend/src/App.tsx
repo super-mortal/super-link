@@ -17,7 +17,7 @@ import { CreateItem } from '@/pages/CreateItem.tsx';
 import { EditItem } from '@/pages/EditItem.tsx';
 import { SkillDetail } from '@/pages/SkillDetail.tsx';
 import { AccountVault } from '@/pages/AccountVault.tsx';
-import { VaultLockScreen } from '@/components/Account/VaultLockScreen.tsx';
+import { AccountDetail } from '@/pages/AccountDetail.tsx';
 
 const InitMiddleware = observer(() => {
   const store = useContext(StoreContext);
@@ -73,8 +73,9 @@ const SetupMiddleware = observer(() => {
 });
 
 /**
- * 账号库路由守卫：未解锁时只渲染锁定页，已解锁才渲染子路由。
- * 解锁态来自 vaultStore（真实来源是内存会话），刷新页面后 DEK 消失 → 自动回到锁定页。
+ * 账号库路由守卫：进入时拉一次元信息（决定锁定页展示「设置主密码」还是「账号库已锁定」）。
+ * 锁定 / 未初始化形态由 AccountVault 自己渲染——锁定态也要保留侧栏（平台计数）与
+ * 工具栏（PRD §5.3 / §10.1），所以这里只做元信息加载，不提前拦截。
  */
 const VaultGuard = observer(() => {
   const vault = useContext(VaultStoreContext);
@@ -103,10 +104,6 @@ const VaultGuard = observer(() => {
     );
   }
 
-  if (!vault.unlocked) {
-    return <VaultLockScreen />;
-  }
-
   return <Outlet />;
 });
 
@@ -129,9 +126,13 @@ const router = createBrowserRouter([
               { path: '/edit-item/:itemID', element: <EditItem /> },
               { path: '/skills/:skillID', element: <SkillDetail /> },
               {
-                // 账号库：锁定态由 VaultGuard 兜住，已解锁才进占位页（后续任务换成列表）
+                // 账号库：VaultGuard 只负责拉取元信息，锁定 / 解锁形态由页面自己决定
+                // （锁定态也保留侧栏与工具栏；详情页未解锁时重定向回 /accounts）
                 element: <VaultGuard />,
-                children: [{ path: '/accounts', element: <AccountVault /> }],
+                children: [
+                  { path: '/accounts', element: <AccountVault /> },
+                  { path: '/accounts/:accountID', element: <AccountDetail /> },
+                ],
               },
             ],
           },

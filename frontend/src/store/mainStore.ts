@@ -2,6 +2,13 @@ import { makeAutoObservable } from 'mobx';
 import { toast } from 'sonner';
 import { API_ENDPOINTS } from './api';
 import {
+  AccountDetailType,
+  AccountGroupType,
+  AccountListParamsType,
+  AccountType,
+  AuthorizationInputType,
+  AccountAuthorizationType,
+  AccountInputType,
   CreateUserType,
   ItemType,
   LoginType,
@@ -43,6 +50,22 @@ class MainStore {
     latest_version: string | null;
     update_available: boolean | null;
   } | null = null;
+
+  /* ----------------------------- 账号库（PRD §5.1.1 模块隔离） ----------------------------- */
+  /**
+   * 账号列表数据：独立集合，绝不复用书签 / Skill 的 items / skills。
+   * 锁定态也保留这份元数据——侧栏平台计数需要在未解锁时可见（PRD §10.1）；
+   * 密文只在详情接口按需拉取，解密结果进 vaultSession 内存缓存，不进本 store。
+   */
+  accounts: AccountType[] = [];
+  /** 分组字典：后端暂无独立分组接口，从账号列表响应的 group_id / group 派生 */
+  accountGroups: AccountGroupType[] = [];
+  /** 列表查询总数（后端返回的 total），随 fetchAccounts 更新 */
+  accountTotal = 0;
+  /** 最近一次拉取的账号详情（含授权关系）；仅内存态，不进 URL / 存储 */
+  currentAccount: AccountDetailType | null = null;
+  /** 最近一次列表查询参数：写操作后按同一条件刷新，避免筛选 / 排序被重置 */
+  accountListParams: AccountListParamsType = {};
 
   constructor(prefStore) {
     this.prefStore = prefStore;
@@ -553,6 +576,188 @@ class MainStore {
     }
 
     return (response?.data ?? null) as SkillDetailType | null;
+  };
+
+  /* ----------------------------- 账号库数据（PRD §8.2） ----------------------------- */
+
+  setAccounts = (val: AccountType[]) => {
+    this.accounts = val;
+  };
+
+  clearCurrentAccount = () => {
+    this.currentAccount = null;
+  };
+
+  /**
+   * 账号列表（GET /api/accounts）。
+   *
+   * 不传分页参数时后端返回全量（与 Skill 列表一致），侧栏平台计数正是从全量数据派生，
+   * 因此默认不传分页；调用方显式传入 platform / group / search 时，
+   * total 与 accounts 都只覆盖过滤后的结果。
+   */
+  fetchAccounts = async (params: AccountListParamsType = {}): Promise<AccountType[] | null> => {
+    const query = new URLSearchParams();
+
+    if (params.search) {
+      query.set('search', params.search);
+    }
+    if (params.platform) {
+      query.set('platform', params.platform);
+    }
+    if (params.group) {
+      query.set('group', String(params.group));
+    }
+    if (params.sort) {
+      query.set('sort', params.sort);
+    }
+    if (params.order) {
+      query.set('order', params.order);
+    }
+    if (params.page) {
+      query.set('page', String(params.page));
+    }
+    if (params.perPage) {
+      query.set('per-page', String(params.perPage));
+    }
+
+    const queryString = query.toString();
+    const endpoint = queryString === '' ? API_ENDPOINTS.accounts.list : `${API_ENDPOINTS.accounts.list}?${queryString}`;
+    // 先记下查询条件：后续写操作按同一条件刷新，避免用户眼前的筛选 / 排序被重置
+    this.accountListParams = params;
+
+    const response = await this.runRequest(endpoint, 'GET', {}, '获取账号列表失败');
+
+    if (response === null) {
+      return null;
+    }
+
+    const accounts = (response?.data?.accounts ?? []) as AccountType[];
+    this.setAccounts(accounts);
+    this.accountTotal = Number(response?.data?.total ?? accounts.length);
+    this.deriveAccountGroups(accounts);
+
+    return accounts;
+  };
+
+  /**
+   * 分组字典派生：后端暂无独立的分组列表接口，分组名只能从账号列表响应里拿，
+   * 因此「一个账号都没有的分组」暂时不可见（待后续补充接口）。
+   */
+  deriveAccountGroups = (accounts: AccountType[]) => {
+    const groups = new Map<number, AccountGroupType>();
+
+    for (const account of accounts) {
+      const id = account.group_id ?? null;
+      const name = account.group ?? null;
+      if (id === null || id <= 0 || !name) {
+        continue;
+      }
+      groups.set(id, { id, name, sort: 0 });
+    }
+
+    this.accountGroups = [...groups.values()].sort((a, b) => a.name.localeCompare(b.name));
+  };
+
+  /** 分组字典：列表还没加载过时先拉一次全量列表再派生 */
+  fetchAccountGroups = async (): Promise<AccountGroupType[]> => {
+    if (this.accounts.length === 0) {
+      await this.fetchAccounts();
+    }
+
+    return this.accountGroups;
+  };
+
+  /** 账号详情（含授权关系）；密文原样交给调用方解密，本 store 不做任何解密 */
+  fetchAccountDetail = async (id: number): Promise<AccountDetailType | null> => {
+    const response = await this.runRequest(API_ENDPOINTS.accounts.detail(id), 'GET', {}, '获取账号详情失败');
+
+    if (response === null) {
+      return null;
+    }
+
+    const account = (response?.data?.account ?? null) as AccountDetailType | null;
+    this.currentAccount = account;
+
+    return account;
+  };
+
+  createAccount = async (payload: AccountInputType): Promise<AccountType | null> => {
+    const response = await this.runRequest(API_ENDPOINTS.accounts.create, 'POST', payload, '创建账号失败');
+
+    if (response === null) {
+      return null;
+    }
+
+    // 刷新列表：侧栏平台计数与列表排序都要按新数据重算
+    await this.fetchAccounts(this.accountListParams);
+
+    return (response?.data?.account ?? null) as AccountType | null;
+  };
+
+  updateAccount = async (id: number, payload: Partial<AccountInputType>): Promise<boolean> => {
+    // id 放请求体：后端从「JSON 体 + 查询参数」的合并入参里读 id
+    const response = await this.runRequest(API_ENDPOINTS.accounts.update, 'PATCH', { id, ...payload }, '更新账号失败');
+
+    if (response === null) {
+      return false;
+    }
+
+    await this.fetchAccounts(this.accountListParams);
+
+    return true;
+  };
+
+  deleteAccounts = async (ids: number[]): Promise<boolean> => {
+    const response = await this.runRequest(API_ENDPOINTS.accounts.delete, 'POST', { ids }, '删除账号失败');
+
+    if (response === null) {
+      return false;
+    }
+
+    await this.fetchAccounts(this.accountListParams);
+
+    return true;
+  };
+
+  /**
+   * 授权关系增改删。授权数据只存在于账号详情里（列表不返回），
+   * 所以这里不做列表刷新，由详情页按需重新拉取。
+   */
+  createAuthorization = async (payload: AuthorizationInputType): Promise<AccountAuthorizationType | null> => {
+    const response = await this.runRequest(
+      API_ENDPOINTS.accounts.authorizations.create,
+      'POST',
+      payload,
+      '创建授权失败'
+    );
+
+    if (response === null) {
+      return null;
+    }
+
+    return (response?.data?.authorization ?? null) as AccountAuthorizationType | null;
+  };
+
+  updateAuthorization = async (id: number, payload: Partial<AuthorizationInputType>): Promise<boolean> => {
+    const response = await this.runRequest(
+      API_ENDPOINTS.accounts.authorizations.update,
+      'POST',
+      { id, ...payload },
+      '更新授权失败'
+    );
+
+    return response !== null;
+  };
+
+  deleteAuthorization = async (ids: number[]): Promise<boolean> => {
+    const response = await this.runRequest(
+      API_ENDPOINTS.accounts.authorizations.delete,
+      'POST',
+      { ids },
+      '删除授权失败'
+    );
+
+    return response !== null;
   };
 
   getUser = async (noErrorEmit: boolean = false) => {

@@ -2,6 +2,7 @@
 
 namespace Framework\Middlewares;
 
+use Controllers\AppInfoController;
 use Controllers\AuthLoginController;
 use Framework\Exceptions\DatabaseNotFound;
 use Framework\Exceptions\UnauthorizedException;
@@ -14,6 +15,10 @@ class AuthenticationMiddleware extends MiddlewareAbstract
 	protected array $skip_auth_routes = [
 		// API Auth routes
 		AuthLoginController::class,
+		// PRD O-6：登录页底部要展示版本号，而登录页只在启用认证时才会打开，
+		// 因此 app-info 必须允许未登录读取。该接口只返回本地版本号与
+		// GitHub Release 公开信息，不含任何用户数据
+		AppInfoController::class,
 	];
 
 	public function handle()

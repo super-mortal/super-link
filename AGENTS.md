@@ -95,6 +95,7 @@ composer install --no-dev --optimize-autoloader   # 运行时依赖：guzzlehttp
 - 样式：Tailwind CSS v4；设计 token 是 `index.css` 中的 CSS 变量（oklch，`:root`/`.dark` 两套）。**禁止写死颜色，一律用语义变量/类**。
 - 组件库：`components/ui/` 下 37 个 shadcn 风格原语；业务组件按 `Sidebar/`、`Table/`、`EditItem/`、`Settings/` 分目录；三种布局在 `components/Table/Layouts/`。
   账号库组件在 `components/Account/`：`Layouts/`（`AccountList` / `AccountCards` / `AccountTable` 三布局 + 账号字段列定义）、`VaultToolbar`、`VaultLockScreen`、`AccountVaultList`（列表外壳）、`CredentialRow` / `AccountBadges` / `SecretButtons` 等凭据行小组件。
+  登录页组件在 `components/Auth/`：`LoginIntro`（左侧项目介绍：Logo、slogan、4 条能力点、非安全上下文提示、版本号，PRD O-6；<1024px 隐藏能力点），由 `layouts/Auth.tsx` 两栏外壳以 `intro` prop 承载。
 - 表单：react-hook-form + zod（schema 在 `lib/types.ts`）。
 - 别名：`@` → `src/`（vite.config.ts + tsconfig）。vite 里另有 `@components`、`@assets`、`@api`、`@utils`，但代码中统一用 `@`。
 - 代码风格：prettier（2 空格、单引号、分号、printWidth 120、trailingComma es5、tailwindcss 类名排序插件）+ eslint 9 flat。
@@ -111,7 +112,7 @@ composer install --no-dev --optimize-autoloader   # 运行时依赖：guzzlehttp
   - `GET /api/app-info` 附带 `latest_release`（`name` / `body` / `published_at` / `html_url`，来自 GitHub Releases API 最新 release 的说明 Markdown，与版本号共用 12 小时缓存；GitHub 不可达时为 null，前端降级展示，见 optimization.md O-4）。
 - 中间件（`framework/bootstrap.php` 顺序）：CSRF → DatabaseMigrations → Authentication。
   - CSRF：写操作校验 `X-CSRF-TOKEN` 请求头（或 `csrf_token` 字段）；GET 跳过；token 同时写入 `CSRF-TOKEN` cookie。
-  - Authentication：`users` 表非空即启用认证，未登录返回 401；`AuthLoginController` 跳过；数据库未初始化时跳过。
+  - Authentication：`users` 表非空即启用认证，未登录返回 401；`AuthLoginController` 与 `AppInfoController` 跳过（后者供登录页展示版本号，只含公开版本信息，PRD O-6）；数据库未初始化时跳过。
   - 会话：cookie 名 `link-navigator-session`，有效期 7 天。
 - 数据层：`models/Repository.php`（SQLite PDO 查询）、`ItemCreator.php`、`TagCreator.php`。
 - **数据库迁移**：`DatabaseMigrations` 中间件每次请求调用 `Repository::migrate()`，做幂等的建表/建索引/删除旧列（如 `items.image`）。改表结构时：新库走 `setupDatabase()`，老库在 `migrate()` 里补增量逻辑，必须可重复执行并兼容已有数据库。

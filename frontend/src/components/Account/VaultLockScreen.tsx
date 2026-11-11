@@ -6,6 +6,7 @@ import { VaultStoreContext } from '@/store/storeContext.ts';
 import { VaultSetupForm } from '@/components/Account/VaultSetupForm.tsx';
 import { VaultUnlockForm } from '@/components/Account/VaultUnlockForm.tsx';
 import { EMPTY_VAULT_STATS, VaultStatsRow, type VaultStatsType } from '@/components/Account/VaultStatsRow.tsx';
+import { SecureContextWarning } from '@/components/Account/SecureContextWarning.tsx';
 
 type VaultLockScreenProps = {
   /**
@@ -44,6 +45,8 @@ export const VaultLockScreen = observer(({ stats = EMPTY_VAULT_STATS }: VaultLoc
         </CardHeader>
 
         <CardContent className="flex flex-col gap-6">
+          <SecureContextWarning />
+
           <VaultStatsRow stats={stats} />
 
           {isInitialized ? <VaultUnlockForm /> : <VaultSetupForm />}

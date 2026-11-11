@@ -11,6 +11,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { observer } from 'mobx-react-lite';
 import { Auth } from '@/layouts/Auth.tsx';
 import { Spinner } from '@/components/ui/spinner.tsx';
+import { SecureContextWarning } from '@/components/Account/SecureContextWarning.tsx';
 
 const formSchema = z.object({
   username: z.string().min(1, { message: '用户名是必填项' }),
@@ -48,6 +49,7 @@ export const Login = observer(() => {
   return (
     <Auth>
       <div className="w-full max-w-sm min-w-xs">
+        <SecureContextWarning className="mb-3" />
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)}>
             <Card>

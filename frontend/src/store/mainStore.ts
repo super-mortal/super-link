@@ -22,6 +22,7 @@ import {
   UpdatePasswordType,
   UpdateUsernameType,
   UserType,
+  VaultImportModeType,
   VaultMetaPayloadType,
   VaultMetaType,
 } from '@/lib/types.ts';
@@ -985,6 +986,50 @@ class MainStore {
    */
   resetVault = async (): Promise<boolean> => {
     const response = await this.runRequest(API_ENDPOINTS.vault.reset, 'POST', {}, '重置账号库失败', false, true);
+
+    return response !== null;
+  };
+
+  /**
+   * 导出加密备份 .slvault（GET /api/vault/export）。
+   *
+   * 后端返回的就是文件内容本身（裸 JSON，无 success 包裹），里面只有密文与 KDF 元信息；
+   * 下载动作在前端完成（与 exportData 一致）：fetch 拿字节 -> Blob -> <a download>。
+   * 成功后由调用方提示，这里不弹 toast——导入导出是设置页里的显式操作，文案归 UI 层。
+   */
+  exportVault = async (): Promise<boolean> => {
+    const response = await this.runRequest(API_ENDPOINTS.vault.export, 'GET', {}, '导出账号库失败', true, false);
+
+    if (response === null) {
+      return false;
+    }
+
+    const blob = new Blob([JSON.stringify(response)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `super-link-vault-${new Date().toISOString().split('T')[0].replace(/-/g, '')}.slvault`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    return true;
+  };
+
+  /**
+   * 导入加密备份 .slvault（POST /api/vault/import，multipart：file + mode）。
+   *
+   * 与 Skill 上传 / 书签导入同一套上传方式；mode 决定合并（merge）还是覆盖（replace）。
+   * 主密码校验不在这里——由调用方先用 lib/vaultBackup.ts 在本地验完再上传。
+   * 成功 / 失败提示走后端 message（runRequest 默认行为），调用方只需处理成功后的锁定与刷新。
+   */
+  importVault = async (selectedFile: File, mode: VaultImportModeType): Promise<boolean> => {
+    const formData = new FormData();
+    formData.append('file', selectedFile);
+    formData.append('mode', mode);
+
+    const response = await this.runRequest(API_ENDPOINTS.vault.import, 'POST', formData, '导入账号库失败');
 
     return response !== null;
   };

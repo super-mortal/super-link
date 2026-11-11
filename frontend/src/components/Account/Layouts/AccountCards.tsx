@@ -20,11 +20,13 @@ import type { AccountType } from '@/lib/types.ts';
 export const AccountCards = ({ rows, visibleFields }: ModuleLayoutProps) => {
   const moduleConfig = MODULES.accounts;
   const openItem = useModuleItemOpen('accounts');
-  const { copyIdentifier, revealPassword, copyPassword } = useAccountSecretActions();
+  const { copyIdentifier, revealPassword, copyPassword, copyPasswordConfirmDialog } = useAccountSecretActions();
   const visible = new Set(visibleFields);
 
   return (
     <div className="m-4 grid grid-cols-1 gap-4 @2xl/main:grid-cols-2 @5xl/main:grid-cols-3 @7xl/main:grid-cols-4">
+      {/* 复制密码二次确认弹窗（PRD §7.3）：整个卡片布局共用一个实例 */}
+      {copyPasswordConfirmDialog}
       {rows.map((row) => {
         // 账号布局只承载账号数据（独立路由 + 独立接口，PRD §5.1.1）
         const account = row.original as AccountType;

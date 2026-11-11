@@ -1,8 +1,9 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import { buildAad, decryptField } from '@/lib/vaultCrypto.ts';
 import { cacheSecret, getDek, readCachedSecret } from '@/lib/vaultSession.ts';
 import { copySecret } from '@/lib/copySecret.ts';
+import { useCopyPasswordGuard } from '@/hooks/useCopyPasswordGuard.tsx';
 import type { AccountSecretsType, TotpPayloadType, VaultSecretField, VaultSecretFieldName } from '@/lib/types.ts';
 
 /**
@@ -72,6 +73,8 @@ export type AccountSecretActionsType = {
   hidePassword: () => void;
   /** 头部「复制密码」用：按需解密（命中缓存则不重复解）后写剪贴板 */
   copyPassword: () => Promise<void>;
+  /** 复制密码二次确认弹窗（PRD §7.3）：由使用本 hook 的页面渲染一次即可 */
+  copyPasswordConfirmDialog: ReactNode;
   totp: TotpPayloadType | null;
   totpPending: boolean;
   totpError: string | null;
@@ -100,6 +103,9 @@ export const useAccountSecretDecrypt = (
   const [notes, setNotes] = useState<string | null>(null);
   const [notesPending, setNotesPending] = useState(false);
   const [notesError, setNotesError] = useState<string | null>(null);
+
+  // 复制密码二次确认（PRD §7.3）：守卫状态 + 待渲染的确认弹窗
+  const { guard: guardCopyPassword, confirmDialog: copyPasswordConfirmDialog } = useCopyPasswordGuard();
 
   // 账号切换（如从「登录方式」跳转到另一个账号，详情页复用同一组件实例）时清空上一个
   // 账号的明文，避免残留他人密码。用 React 官方的「prop 变化时调整 state」写法：
@@ -152,30 +158,33 @@ export const useAccountSecretDecrypt = (
   }, []);
 
   const copyPassword = useCallback(async () => {
-    if (password !== null) {
-      await copySecret(password);
-      return;
-    }
+    // 复制密码统一走二次确认守卫：设置关闭时直接执行，行为与之前一致（PRD §7.3）
+    guardCopyPassword(async () => {
+      if (password !== null) {
+        await copySecret(password);
+        return;
+      }
 
-    setPasswordPending(true);
-    const result = await decryptSecret(accountId, 'password', secrets?.password);
-    setPasswordPending(false);
+      setPasswordPending(true);
+      const result = await decryptSecret(accountId, 'password', secrets?.password);
+      setPasswordPending(false);
 
-    if (result.status === 'ok') {
-      setPassword(result.value);
-      await copySecret(result.value);
-      return;
-    }
-    if (result.status === 'locked') {
-      toast('请先解锁账号库', { position: 'top-center' });
-      return;
-    }
-    if (result.status === 'empty') {
-      toast('该账号未设置密码', { position: 'top-center' });
-      return;
-    }
-    toast.error(result.message, { position: 'top-center' });
-  }, [accountId, secrets, password]);
+      if (result.status === 'ok') {
+        setPassword(result.value);
+        await copySecret(result.value);
+        return;
+      }
+      if (result.status === 'locked') {
+        toast('请先解锁账号库', { position: 'top-center' });
+        return;
+      }
+      if (result.status === 'empty') {
+        toast('该账号未设置密码', { position: 'top-center' });
+        return;
+      }
+      toast.error(result.message, { position: 'top-center' });
+    });
+  }, [guardCopyPassword, accountId, secrets, password]);
 
   const loadTotp = useCallback(async () => {
     setTotpPending(true);
@@ -227,6 +236,7 @@ export const useAccountSecretDecrypt = (
     revealPassword,
     hidePassword,
     copyPassword,
+    copyPasswordConfirmDialog,
     totp,
     totpPending,
     totpError,

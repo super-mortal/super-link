@@ -20,11 +20,13 @@ import type { AccountType } from '@/lib/types.ts';
 export const AccountList = ({ rows, visibleFields }: ModuleLayoutProps) => {
   const moduleConfig = MODULES.accounts;
   const openItem = useModuleItemOpen('accounts');
-  const { copyIdentifier, revealPassword, copyPassword } = useAccountSecretActions();
+  const { copyIdentifier, revealPassword, copyPassword, copyPasswordConfirmDialog } = useAccountSecretActions();
   const visible = new Set(visibleFields);
 
   return (
     <div className="flex flex-col divide-y">
+      {/* 复制密码二次确认弹窗（PRD §7.3）：整个列表共用一个实例，行内按钮只触发守卫 */}
+      {copyPasswordConfirmDialog}
       {rows.map((row) => {
         // 账号布局只承载账号数据（独立路由 + 独立接口，PRD §5.1.1）
         const account = row.original as AccountType;

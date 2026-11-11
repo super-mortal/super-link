@@ -1,10 +1,13 @@
 import { useEffect, type ReactNode } from 'react';
+import { observer } from 'mobx-react-lite';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card.tsx';
+import { Button } from '@/components/ui/button.tsx';
 import { Spinner } from '@/components/ui/spinner.tsx';
 import { CopySecretButton, PasswordMask, RevealSecretButton } from '@/components/Account/SecretButtons.tsx';
 import { TotpCode } from '@/components/Account/TotpCode.tsx';
 import { formatAccountDate, formatRelativePast } from '@/lib/accountFormat.ts';
 import { copySecret } from '@/lib/copySecret.ts';
+import { preferencesStore } from '@/store/preferencesStore.ts';
 import type { AccountSecretActionsType } from '@/hooks/useAccountSecretDecrypt.ts';
 import type { AccountDetailType } from '@/lib/types.ts';
 
@@ -26,11 +29,13 @@ const CredentialLine = ({ label, children }: { label: string; children: ReactNod
  * 凭据区（PRD §10.4）：账号标识 + 复制；密码（掩码 / 明文、上次修改与年龄、显示 / 复制）；
  * 两步验证（动态码 + 倒计时 + 发行方账号 + 复制）。
  *
- * 密码遵循 PRD §7.4「详情页默认掩码，点击显示才渲染明文」；TOTP 则在挂载后即按需
- * 解密——动态码的价值就在于打开详情就能抄录，且它 30 秒轮换、暴露窗口本身极短。
- * 没有密文的字段（第三方登录账号没有密码 / 未配 2FA）整行不渲染，由头部徽章传达状态。
+ * 密码遵循 PRD §7.4「详情页默认掩码，点击显示才渲染明文」；TOTP 的显示策略由设置项
+ * 「详情页自动显示动态码」（默认关）决定：关闭时进详情不解密动态码，点「显示动态码」
+ * 才按需解密——与密码同一套防泄漏口径，避免一进详情就把所有敏感字段摊开；开启后
+ * 保持旧行为（挂载即解密，动态码打开就能抄）。没有密文的字段（第三方登录账号没有
+ * 密码 / 未配 2FA）整行不渲染，由头部徽章传达状态。
  */
-export const AccountCredentials = ({ account, secretActions }: AccountCredentialsProps) => {
+export const AccountCredentials = observer(({ account, secretActions }: AccountCredentialsProps) => {
   const {
     password,
     passwordVisible,
@@ -47,12 +52,14 @@ export const AccountCredentials = ({ account, secretActions }: AccountCredential
 
   const hasPassword = Boolean(account.secrets?.password);
   const hasTotp = Boolean(account.secrets?.totp);
+  const autoRevealTotp = preferencesStore.vaultTotpAutoReveal;
 
   useEffect(() => {
-    if (hasTotp) {
+    // 只有开关打开才挂载即解密；关闭时等用户点「显示动态码」
+    if (hasTotp && autoRevealTotp) {
       void loadTotp();
     }
-  }, [hasTotp, loadTotp]);
+  }, [hasTotp, autoRevealTotp, loadTotp]);
 
   const relativeChange = formatRelativePast(account.password_updated_at);
 
@@ -110,9 +117,14 @@ export const AccountCredentials = ({ account, secretActions }: AccountCredential
             {totpPending && !totp ? <span className="text-muted-foreground text-xs">解密中…</span> : null}
             {totpError ? <p className="text-destructive text-xs">{totpError}</p> : null}
             {totp ? <TotpCode secret={totp.secret} issuer={totp.issuer} account={totp.account} /> : null}
+            {!totp && !totpPending && !totpError && !autoRevealTotp ? (
+              <Button variant="outline" size="sm" className="w-fit" onClick={() => void loadTotp()}>
+                显示动态码
+              </Button>
+            ) : null}
           </CredentialLine>
         )}
       </CardContent>
     </Card>
   );
-};
+});

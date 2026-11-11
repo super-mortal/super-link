@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { ChevronLeft, ChevronRight, Database, Import, InfoIcon, Keyboard, Share2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Database, Import, InfoIcon, Keyboard, KeyRound, Share2 } from 'lucide-react';
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
@@ -9,6 +9,7 @@ import { SettingsAuth } from './SettingsAuth';
 import { SettingsIntegrations } from './SettingsIntegrations.tsx';
 import { SettingsImport } from './SettingsImport';
 import { SettingsBackup } from './SettingsBackup';
+import { SettingsVault } from './Vault.tsx';
 
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -33,6 +34,13 @@ export const SettingsDialog = observer(() => {
       title: '备份',
       icon: Database,
       component: <SettingsBackup />,
+      warningMessage: null,
+    },
+    {
+      id: 'vault',
+      title: '账号库',
+      icon: KeyRound,
+      component: <SettingsVault />,
       warningMessage: null,
     },
     {

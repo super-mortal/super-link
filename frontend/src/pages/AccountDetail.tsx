@@ -126,6 +126,9 @@ export const AccountDetail = observer(() => {
               onDelete={handleDelete}
             />
 
+            {/* 复制密码二次确认弹窗（PRD §7.3）：详情页内多个复制入口共用这一个实例 */}
+            {secretActions.copyPasswordConfirmDialog}
+
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
               <div className="flex flex-col gap-4 lg:col-span-2">
                 <AccountCredentials account={detail} secretActions={secretActions} />

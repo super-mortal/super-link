@@ -290,3 +290,38 @@ export type AuthorizationInputType = {
   status?: AccountAuthorizationStatusType;
   granted_at?: string | null;
 };
+
+/**
+ * 加密备份文件（.slvault）的顶层结构（PRD §8.1）。
+ * 与后端 VaultExportController 的输出一一对应：KDF 元信息 + 账号（元数据 + 密文 + 授权关系）。
+ * 文件里没有任何明文——解密只发生在浏览器，服务端连 DEK 都没有。
+ */
+export type VaultBackupAccountType = AccountType & {
+  authorizations: AccountAuthorizationType[];
+};
+
+export type VaultBackupType = {
+  /** 加密格式版本，首版为 1 */
+  version: number;
+  /** 导出时间（ISO 8601） */
+  exported_at: string;
+  kdf: VaultKdfAlgorithmType;
+  kdf_memory: number;
+  kdf_iterations: number;
+  kdf_parallelism: number;
+  /** 16 字节随机盐，Base64 */
+  salt: string;
+  /** 被 KEK 包裹的 DEK，Base64 */
+  wrapped_dek: string;
+  /** 包裹 DEK 使用的 12 字节 nonce，Base64 */
+  wrap_nonce: string;
+  accounts: VaultBackupAccountType[];
+};
+
+/**
+ * 导入模式：
+ * - merge：合并（默认）。本地已存在同 id 的账号 / 授权跳过并保留本地版本，其余以新 id 导入，
+ *   且要求备份与当前账号库是同一把 DEK（否则导入的账号在本地无法解密，后端会拒绝）；
+ * - replace：覆盖。清空现有账号与授权后按备份原样恢复，vault_meta 也以备份为准。
+ */
+export type VaultImportModeType = 'merge' | 'replace';

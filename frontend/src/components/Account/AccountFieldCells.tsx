@@ -32,7 +32,7 @@ export const AccountIdentifierCell = ({ row }: { row: Row<ModuleItemType> }) => 
 /** 密码列：默认掩码；没有密码密文（如第三方登录账号）时渲染占位「—」 */
 export const AccountPasswordCell = ({ row }: { row: Row<ModuleItemType> }) => {
   const account = accountOf(row.original);
-  const { revealPassword, copyPassword } = useAccountSecretActions();
+  const { revealPassword, copyPassword, copyPasswordConfirmDialog } = useAccountSecretActions();
 
   if (!account.secrets?.password) {
     return <span className="text-muted-foreground">—</span>;
@@ -43,6 +43,8 @@ export const AccountPasswordCell = ({ row }: { row: Row<ModuleItemType> }) => {
       <PasswordMask />
       <RevealSecretButton onReveal={revealPassword} label="显示密码" />
       <CopySecretButton onCopy={copyPassword} label="复制密码" />
+      {/* 复制密码二次确认弹窗（PRD §7.3）：每个密码单元格自带一个实例，互不影响 */}
+      {copyPasswordConfirmDialog}
     </div>
   );
 };

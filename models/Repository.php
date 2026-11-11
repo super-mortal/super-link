@@ -573,13 +573,17 @@ class Repository
 	}
 
 	/**
-	 * 新建账号，返回自增 id
+	 * 新建账号，返回新 id
 	 *
 	 * 密文列（*_ct / *_iv）以二进制原样落库：不做 base64，因为服务端只负责搬运
 	 * 客户端加密后的字节，多做一层编码只会让导出/备份体积变大且增加出错面。
 	 * 用 PARAM_LOB 绑定可避免密文中的 NUL 字节被按 C 字符串截断。
+	 *
+	 * $id 非空时显式写入该 id：仅备份导入的 replace 模式使用（原样恢复文件里的 id，
+	 * 授权关系的引用才对得上）；正常新建不传，走自增分配。id 不放进
+	 * ACCOUNT_WRITABLE_COLUMNS——那是 PATCH 的列白名单，放进去会允许改 id。
 	 */
-	public function createAccount(array $data)
+	public function createAccount(array $data, ?int $id = null)
 	{
 		$date = date('Y-m-d H:i:s');
 		$values = [];
@@ -597,7 +601,12 @@ class Repository
 		$values['created_at'] = $data['created_at'] ?? $date;
 		$values['updated_at'] = $data['updated_at'] ?? $date;
 
-		$columns = array_merge(self::ACCOUNT_WRITABLE_COLUMNS, ['created_at', 'updated_at']);
+		$columns = self::ACCOUNT_WRITABLE_COLUMNS;
+		if (null !== $id) {
+			$columns = array_merge(['id'], $columns);
+			$values['id'] = $id;
+		}
+		$columns = array_merge($columns, ['created_at', 'updated_at']);
 		$placeholders = array_map(fn($column) => ':' . $column, $columns);
 
 		$stmt = $this->pdo->prepare(
@@ -719,6 +728,18 @@ class Repository
 		return $stmt->fetchAll(PDO::FETCH_ASSOC);
 	}
 
+	/**
+	 * 全部授权关系（按 id 升序）
+	 *
+	 * 目前只有加密备份导出使用：导出结构是「一条账号带其授权」，一次查全量再在内存
+	 * 按 account_id 分组，比逐账号调 getAuthorizationsByAccountId 少 N-1 次查询。
+	 */
+	public function getAllAuthorizations(): array
+	{
+		$stmt = $this->pdo->query('SELECT * FROM account_authorizations ORDER BY id ASC');
+		return $stmt->fetchAll(PDO::FETCH_ASSOC);
+	}
+
 	public function getAuthorizationById(int $id)
 	{
 		$stmt = $this->pdo->prepare('SELECT * FROM account_authorizations WHERE id = :id');
@@ -728,8 +749,11 @@ class Repository
 
 	/**
 	 * 新建授权关系，返回自增 id
+	 *
+	 * $id 非空时显式写入该 id：仅备份导入的 replace 模式使用（与 createAccount 的 $id 同理）。
+	 * created_at / updated_at 可由调用方传入（导入时保留备份里的时间），缺省取当前时间。
 	 */
-	public function createAuthorization(array $data)
+	public function createAuthorization(array $data, ?int $id = null)
 	{
 		$date = date('Y-m-d H:i:s');
 		$values = [];
@@ -744,10 +768,15 @@ class Repository
 		$values['identifier'] = (string)($data['identifier'] ?? '');
 		$values['note'] = (string)($data['note'] ?? '');
 		$values['status'] = $this->normalizeAuthorizationStatus($data['status'] ?? null);
-		$values['created_at'] = $date;
-		$values['updated_at'] = $date;
+		$values['created_at'] = $data['created_at'] ?? $date;
+		$values['updated_at'] = $data['updated_at'] ?? $date;
 
-		$columns = array_merge(self::AUTHORIZATION_WRITABLE_COLUMNS, ['created_at', 'updated_at']);
+		$columns = self::AUTHORIZATION_WRITABLE_COLUMNS;
+		if (null !== $id) {
+			$columns = array_merge(['id'], $columns);
+			$values['id'] = $id;
+		}
+		$columns = array_merge($columns, ['created_at', 'updated_at']);
 		$placeholders = array_map(fn($column) => ':' . $column, $columns);
 
 		$stmt = $this->pdo->prepare(
@@ -803,6 +832,195 @@ class Repository
 	{
 		$stmt = $this->pdo->prepare('DELETE FROM account_authorizations WHERE id = :id');
 		return $stmt->execute([':id' => $id]);
+	}
+
+	/**
+	 * 重置账号库：删除全部账号、授权关系与 vault_meta（PRD §7.7 / §8.1）。
+	 *
+	 * 一个事务内完成：只删 meta 会留下「界面显示已重置、库里还有密文」的状态，
+	 * 用户重新设置主密码后，旧账号（明文元数据 + 解不开的密文）会重新出现在列表里。
+	 * 失败整体回滚，避免删到一半。
+	 */
+	public function resetVaultData(): void
+	{
+		$this->pdo->beginTransaction();
+		try {
+			$this->pdo->exec('DELETE FROM account_authorizations');
+			$this->pdo->exec('DELETE FROM accounts');
+			$this->deleteVaultMeta();
+			$this->pdo->commit();
+		} catch (Exception $e) {
+			if ($this->pdo->inTransaction()) {
+				$this->pdo->rollBack();
+			}
+			throw $e;
+		}
+	}
+
+	/**
+	 * 导入加密备份（PRD §8.1），返回 ['accounts' => 新导入账号数, 'skipped_accounts' => 跳过数,
+	 * 'authorizations' => 导入授权数]。
+	 *
+	 * $backup 为 Utils\VaultBackupPayload::parse() 的返回值（meta + accounts，密文已是二进制）。
+	 *
+	 * 为什么整体一个事务：replace 要先清空再逐条写入，merge 也要同时写账号、授权，
+	 * 并可能写 vault_meta；任何一步失败都会留下「清空了一半」或「账号进来了授权没进来」
+	 * 的中间态，而密文数据写坏没有任何修复手段，所以整体成功、失败整体回滚。
+	 *
+	 * id 重映射（本任务最易错点）：merge 模式下文件里的账号按**新的自增 id** 插入
+	 * （本地 id 空间不被备份文件占用，本地已存在的同 id 账号跳过），因此文件里所有
+	 * 「按 id 互相引用」的字段都必须经过 旧 id -> 新 id 映射重写：
+	 *   - accounts.login_via_account_id（可能指向文件里更靠后的账号，必须分两遍处理）；
+	 *   - account_authorizations.account_id / linked_account_id。
+	 * 漏掉任何一处，授权就会挂到错误的账号上，且界面看不出异常（元数据都是明文）。
+	 * replace 模式原样写回文件 id，映射退化为恒等，同一套代码同时覆盖两种模式。
+	 */
+	public function importVaultBackup(array $backup, string $mode): array
+	{
+		$this->pdo->beginTransaction();
+		try {
+			if ('replace' === $mode) {
+				// 覆盖导入：先清空旧数据。不用 resetVaultData()——那个方法自己开事务，
+				// PDO 嵌套 beginTransaction 会直接抛异常；meta 在下面统一刷新。
+				$this->pdo->exec('DELETE FROM account_authorizations');
+				$this->pdo->exec('DELETE FROM accounts');
+			}
+
+			// merge 模式：本地已占用的 id 集合，用于「按 id 冲突跳过」
+			$existing_ids = [];
+			$existing_authorization_ids = [];
+			if ('merge' === $mode) {
+				$stmt = $this->pdo->query('SELECT id FROM accounts');
+				$existing_ids = array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+				// 授权同样按 id 冲突跳过：合并的典型场景是「同库部分丢失后重导备份」，
+				// 本地账号还在时它的授权也还在，不跳过就会每条授权重复一份
+				$stmt = $this->pdo->query('SELECT id FROM account_authorizations');
+				$existing_authorization_ids = array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+			}
+
+			// 分组名 -> 本地分组 id：文件里只保证名称跨设备稳定，id 可能因设备而异
+			$group_ids_by_name = [];
+			foreach ($this->getAccountGroups() as $group) {
+				$group_ids_by_name[(string)$group['name']] = (int)$group['id'];
+			}
+
+			// 第一遍：插入账号，建立「文件旧 id -> 本地 id」映射
+			$id_map = [];
+			/** @var array<int, int> 待重写 login_via 的 [新账号 id => 文件里的旧关联 id] */
+			$login_via_updates = [];
+			$imported = 0;
+			$skipped = 0;
+
+			foreach ($backup['accounts'] as $account) {
+				$old_id = (int)$account['id'];
+
+				if ('merge' === $mode && in_array($old_id, $existing_ids, true)) {
+					// 本地已存在同 id 账号：跳过并保留本地版本（不覆盖——本地数据可能是更新的）。
+					// 映射到同 id：别的账号 / 授权引用它时保持原值即可，本地该 id 账号仍在，引用有效。
+					$id_map[$old_id] = $old_id;
+					$skipped++;
+					continue;
+				}
+
+				// 分组按名称解析；文件里的分组名本地不存在时置空（本项目没有自建分组接口，
+				// 分组只有种子数据，静默建组会绕过接口约定，置空只是失去分组信息）
+				$account['group_id'] = null === $account['group']
+					? null
+					: ($group_ids_by_name[$account['group']] ?? null);
+				unset($account['group']);
+
+				$new_id = $this->createAccount($account, 'replace' === $mode ? $old_id : null);
+				$id_map[$old_id] = $new_id;
+				$imported++;
+
+				if (null !== $account['login_via_account_id']) {
+					// login_via 可能指向文件里更靠后的账号，此刻 id_map 还不完整，
+					// 先记账，等所有账号插完再统一重写
+					$login_via_updates[$new_id] = (int)$account['login_via_account_id'];
+				}
+			}
+
+			// 第二遍：重写 login_via_account_id（此时所有账号都已插入，id_map 完整）
+			$login_via_stmt = $this->pdo->prepare(
+				'UPDATE accounts SET login_via_account_id = :linked, updated_at = :updated_at WHERE id = :id'
+			);
+			foreach ($login_via_updates as $new_id => $old_linked) {
+				$mapped = $id_map[$old_linked] ?? null;
+				// 指向不存在（文件损坏）或指向自己（自环无意义）时置空
+				if (null !== $mapped && $mapped === $new_id) {
+					$mapped = null;
+				}
+				$login_via_stmt->execute([
+					':linked' => $mapped,
+					':updated_at' => date('Y-m-d H:i:s'),
+					':id' => $new_id,
+				]);
+			}
+
+			// 第三遍：授权关系，account_id / linked_account_id 经 id_map 重映射
+			$authorization_count = 0;
+			$skipped_authorizations = 0;
+			foreach ($backup['accounts'] as $account) {
+				foreach ($account['authorizations'] as $authorization) {
+					if (
+						'merge' === $mode
+						&& null !== $authorization['id']
+						&& in_array((int)$authorization['id'], $existing_authorization_ids, true)
+					) {
+						$skipped_authorizations++;
+						continue;
+					}
+
+					$account_id = $id_map[(int)$authorization['account_id']] ?? null;
+					if (null === $account_id) {
+						// 来源账号不在文件里（畸形但结构合法的备份）：授权无处可挂，丢弃
+						continue;
+					}
+
+					$linked_account_id = null;
+					if (null !== $authorization['linked_account_id']) {
+						$mapped_linked = $id_map[(int)$authorization['linked_account_id']] ?? null;
+						// 关联账号不能是授权所属账号自身（与接口层同一规则）
+						$linked_account_id = ($mapped_linked === $account_id) ? null : $mapped_linked;
+					}
+
+					$authorization['account_id'] = $account_id;
+					$authorization['linked_account_id'] = $linked_account_id;
+					$this->createAuthorization($authorization, 'replace' === $mode ? $authorization['id'] : null);
+					$authorization_count++;
+				}
+			}
+
+			// vault_meta 刷新（PRD §8.1：文件带 KDF 元信息时以文件为准，便于跨设备恢复）：
+			// - replace：本地数据已清空，密文全部来自文件，必须换成文件的 KDF 参数与
+			//   wrapped_dek，否则导入的账号永远解不开；
+			// - merge + 本地未初始化（新设备恢复）：写入文件 meta，否则账号接口一律 409；
+			// - merge + 本地已初始化：保持本地 meta 不变——本地密文用的是本地 DEK，
+			//   覆盖 wrapped_dek 会让本地已有账号全部解不开（控制器已校验两边
+			//   wrapped_dek 一致才放行 merge，一致时写不写都一样，索性不写）。
+			$meta_row = $this->getVaultMeta();
+			if ('replace' === $mode || !$meta_row) {
+				if ($meta_row) {
+					$this->updateVaultMeta($backup['meta']);
+				} else {
+					$this->createVaultMeta($backup['meta']);
+				}
+			}
+
+			$this->pdo->commit();
+
+			return [
+				'accounts' => $imported,
+				'skipped_accounts' => $skipped,
+				'authorizations' => $authorization_count,
+				'skipped_authorizations' => $skipped_authorizations,
+			];
+		} catch (Exception $e) {
+			if ($this->pdo->inTransaction()) {
+				$this->pdo->rollBack();
+			}
+			throw $e;
+		}
 	}
 
 	/**

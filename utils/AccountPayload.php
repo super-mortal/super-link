@@ -437,8 +437,12 @@ class AccountPayload
 	 *   - 键不存在：不动该字段（PATCH 语义）；
 	 *   - 显式 null：清空该字段（例如用户删掉了备注），密文与 nonce 一起置 NULL；
 	 *   - {ct, iv}：base64 解码后入库，iv 必须 12 字节、ct 不能为空。
+	 *
+	 * 设为 public 是因为备份导入（Utils\VaultBackupPayload）复用同一套密文规则：
+	 * .slvault 文件里每条账号的 secrets 与账号接口的请求体逐字段同构，
+	 * 各写一份校验必然漂移，而密文校验不一致的后果是「导入时放过、解密时失败」。
 	 */
-	private static function parseSecrets(array $input): array
+	public static function parseSecrets(array $input): array
 	{
 		$data = [];
 

@@ -45,6 +45,8 @@ use Controllers\UserGetController;
 use Controllers\UserPasswordUpdateController;
 use Controllers\UserUsernameUpdateController;
 use Controllers\VaultChangeMasterController;
+use Controllers\VaultExportController;
+use Controllers\VaultImportController;
 use Controllers\VaultMetaGetController;
 use Controllers\VaultResetController;
 use Controllers\VaultSetupController;
@@ -146,6 +148,14 @@ return [
 			],
 			'reset' => [
 				'POST' => VaultResetController::class,
+			],
+			// 加密备份：导出只出密文（响应体即 .slvault 文件内容）；
+			// 导入为 multipart 上传（file + mode），主密码校验在浏览器完成
+			'export' => [
+				'GET' => VaultExportController::class,
+			],
+			'import' => [
+				'POST' => VaultImportController::class,
 			],
 		],
 		// 账号（PRD §8.2）：只处理元数据与密文，任何端点都不返回明文

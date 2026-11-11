@@ -45,6 +45,10 @@ export const API_ENDPOINTS = {
     setup: `${API_BASE}/vault/setup`,
     changeMaster: `${API_BASE}/vault/change-master`,
     reset: `${API_BASE}/vault/reset`,
+    /** GET 导出加密备份（响应体即 .slvault 文件内容，只有密文） */
+    export: `${API_BASE}/vault/export`,
+    /** POST 导入加密备份（multipart：file + mode） */
+    import: `${API_BASE}/vault/import`,
   },
   /** 账号（PRD §8.2）：只传元数据与密文，任何端点都不返回明文 */
   accounts: {

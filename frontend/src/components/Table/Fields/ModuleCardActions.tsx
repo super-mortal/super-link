@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { observer } from 'mobx-react-lite';
-import { Copy, Download, Ellipsis, Eye, Maximize2, Pencil, RefreshCw, Trash2 } from 'lucide-react';
+import { Copy, Download, Ellipsis, Eye, Maximize2, Pencil, RefreshCw, Star, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { StoreContext } from '@/store/storeContext.ts';
 import { MODULES } from '@/lib/modules.ts';
@@ -18,6 +18,7 @@ import { DeleteDialog } from '@/components/Table/Controls/DeleteDialog.tsx';
 import { Spinner } from '@/components/ui/spinner.tsx';
 import { cn } from '@/lib/utils.ts';
 import { isAccountItem, isSkillItem } from '@/components/Table/Fields/moduleItem.ts';
+import { ACCOUNT_DELETE_HINT, notifyAccountDialogPending } from '@/components/Account/accountMessages.ts';
 
 const actionButtonClass =
   'onhover-visible text-muted-foreground bg-background hover:bg-accent hover:text-foreground flex h-8 shrink-0 items-center justify-center rounded-md border px-2 shadow-xs transition-colors';
@@ -48,6 +49,7 @@ export const ModuleCardActions = observer(({ module, item }: { module: ModuleKey
 
   const detailPath = MODULES[module].routes.detail;
   const isSkill = isSkillItem(item);
+  const isAccount = isAccountItem(item);
   // 上传来源没有上游仓库，菜单项直接禁用，不靠后端 SL-SKL-0005 兜底
   const isUpdatable = isSkill && item.source_type === 'github';
   const noUpstreamHint = '上传来源无上游更新';
@@ -83,7 +85,7 @@ export const ModuleCardActions = observer(({ module, item }: { module: ModuleKey
 
   const makeCopy = async () => {
     // 「创建副本」只属于书签：Skill 是安装产物，账号的密文更不该被复制成第二份
-    if (isSkill || isAccountItem(item)) {
+    if (isSkill || isAccount) {
       return;
     }
     const created = await store.createItem({ ...item });
@@ -98,11 +100,24 @@ export const ModuleCardActions = observer(({ module, item }: { module: ModuleKey
       await store.deleteSkills([item.id]);
       return;
     }
+    // 账号删除走账号库自己的接口（会同时清除密码 / 2FA / 授权记录，PRD §10.3）
+    if (isAccount) {
+      await store.deleteAccounts([item.id]);
+      return;
+    }
     const result = await store.deleteItems([item.id]);
     if (!result) {
       return;
     }
     store.fetchItems();
+  };
+
+  /** 收藏只是账号标记（星标），不进入筛选视图（PRD §9.5）；更新后列表自动刷新 */
+  const toggleFavorite = async () => {
+    if (!isAccount) {
+      return;
+    }
+    await store.updateAccount(item.id, { favorite: !item.favorite });
   };
 
   return (
@@ -154,6 +169,19 @@ export const ModuleCardActions = observer(({ module, item }: { module: ModuleKey
               </DropdownMenuItem>
               <DropdownMenuSeparator />
             </>
+          ) : isAccount ? (
+            <>
+              {/* 编辑弹窗在 task12 接入；收藏是纯标记，更新后列表按原条件刷新 */}
+              <DropdownMenuItem onSelect={() => notifyAccountDialogPending()}>
+                <Pencil />
+                编辑
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={toggleFavorite}>
+                <Star />
+                {item.favorite ? '取消收藏' : '收藏'}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+            </>
           ) : (
             <>
               <DropdownMenuItem onSelect={() => store.openItemEditModal(item.id)}>
@@ -168,7 +196,12 @@ export const ModuleCardActions = observer(({ module, item }: { module: ModuleKey
             </>
           )}
           {/* 菜单项包在 DeleteDialog 里保持菜单不关闭，才能弹出二次确认 */}
-          <DeleteDialog onConfirm={handleDelete} itemsCount={1} noun={isSkill ? 'Skill' : '项目'}>
+          <DeleteDialog
+            onConfirm={handleDelete}
+            itemsCount={1}
+            noun={isSkill ? 'Skill' : isAccount ? '账号' : '项目'}
+            description={isAccount ? ACCOUNT_DELETE_HINT : undefined}
+          >
             <div className="text-destructive hover:bg-destructive/10 focus:bg-destructive/10 relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm transition-colors outline-none select-none">
               <Trash2 className="size-4" />
               删除

@@ -15,6 +15,8 @@ import { isSkillItem, tagIDsOf } from '@/components/Table/Fields/moduleItem.ts';
 import { StoreContext } from '@/store/storeContext.ts';
 import { useIsMobile } from '@/hooks/use-mobile.ts';
 import { MODULES, type ModuleItemType } from '@/lib/modules.ts';
+import type { ModuleKey } from '@/lib/types.ts';
+import { ACCOUNT_DELETE_HINT } from '@/components/Account/accountMessages.ts';
 
 type TagSelectionPayload = {
   newSelectedTagsAll: number[];
@@ -26,6 +28,8 @@ type BulkActionControlsProps = {
   rowSelection: RowSelectionState;
   /** 列表内容区容器节点：pill 以它的实测水平中心定位，侧栏拖拽 / 折叠后自动跟随 */
   contentElement?: HTMLElement | null;
+  /** 覆盖模块来源：账号库列表外壳自带 store.module 之外的上下文，显式传 'accounts' */
+  module?: ModuleKey;
 };
 
 /**
@@ -33,12 +37,18 @@ type BulkActionControlsProps = {
  *
  * 选中项为空即渲染 null：取消最后一项、点关闭、删除完成、切换模块、
  * 翻页 / 搜索 / 排序变化（列表页会重置行选择）都会即时消失。
+ *
+ * 账号库复用同一条 pill（PRD §10.3），但只保留全选 / 删除 / 取消：
+ * 账号不打标签、也没有「刷新元数据」动作，删除提示额外说明会清除密码 / 2FA / 授权记录。
  */
-export const BulkActionControls = observer(({ table, rowSelection, contentElement }: BulkActionControlsProps) => {
+export const BulkActionControls = observer((props: BulkActionControlsProps) => {
+  const { table, rowSelection, contentElement } = props;
   const isMobile = useIsMobile();
   const store = useContext(StoreContext);
-  const module = store.module;
+  // 账号库列表外壳显式传 'accounts'；书签 / Skill 仍以 store.module 为准
+  const module = props.module ?? store.module;
   const isSkillModule = module === 'skills';
+  const isAccountModule = module === 'accounts';
   const moduleConfig = MODULES[module];
 
   const [deleteInProgress, setDeleteInProgress] = React.useState(false);
@@ -97,13 +107,16 @@ export const BulkActionControls = observer(({ table, rowSelection, contentElemen
     try {
       const isDeleted = isSkillModule
         ? await store.deleteSkills(selectedRowIDs)
-        : (await store.deleteItems(selectedRowIDs)) !== null;
+        : isAccountModule
+          ? await store.deleteAccounts(selectedRowIDs)
+          : (await store.deleteItems(selectedRowIDs)) !== null;
 
       if (!isDeleted) {
         return;
       }
 
-      if (!isSkillModule) {
+      // deleteAccounts 内部已按 accountListParams 刷新列表，不能再拉一次书签列表
+      if (!isSkillModule && !isAccountModule) {
         await store.fetchItems();
       }
       table.resetRowSelection();
@@ -229,33 +242,42 @@ export const BulkActionControls = observer(({ table, rowSelection, contentElemen
         <span className="whitespace-nowrap">{selectedRowsCount} 已选择</span>
       </Button>
 
-      <TagSelect selectedTagsAll={selectedTagsAll} selectedTagsSome={selectedTagsSome} onSubmit={updateTagsSelected}>
+      {!isAccountModule && (
+        <TagSelect selectedTagsAll={selectedTagsAll} selectedTagsSome={selectedTagsSome} onSubmit={updateTagsSelected}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-primary-foreground hover:bg-primary-foreground/16 hover:text-primary-foreground gap-1.5"
+            aria-label="批量打标签"
+            title="批量打标签"
+          >
+            <TagsIcon />
+            <span className="hidden md:inline">标签</span>
+          </Button>
+        </TagSelect>
+      )}
+
+      {!isAccountModule && (
         <Button
           variant="ghost"
           size="sm"
           className="text-primary-foreground hover:bg-primary-foreground/16 hover:text-primary-foreground gap-1.5"
-          aria-label="批量打标签"
-          title="批量打标签"
+          aria-label="刷新"
+          title="刷新"
+          disabled={fetchInProgress}
+          onClick={refetchSelected}
         >
-          <TagsIcon />
-          <span className="hidden md:inline">标签</span>
+          {fetchInProgress ? <RefreshCw className="animate-spin" /> : <RefreshCw />}
+          <span className="hidden md:inline">刷新</span>
         </Button>
-      </TagSelect>
+      )}
 
-      <Button
-        variant="ghost"
-        size="sm"
-        className="text-primary-foreground hover:bg-primary-foreground/16 hover:text-primary-foreground gap-1.5"
-        aria-label="刷新"
-        title="刷新"
-        disabled={fetchInProgress}
-        onClick={refetchSelected}
+      <DeleteDialog
+        onConfirm={deleteSelected}
+        itemsCount={selectedRowsCount}
+        noun={moduleConfig.noun}
+        description={isAccountModule ? ACCOUNT_DELETE_HINT : undefined}
       >
-        {fetchInProgress ? <RefreshCw className="animate-spin" /> : <RefreshCw />}
-        <span className="hidden md:inline">刷新</span>
-      </Button>
-
-      <DeleteDialog onConfirm={deleteSelected} itemsCount={selectedRowsCount} noun={moduleConfig.noun}>
         <Button
           variant="ghost"
           size="sm"

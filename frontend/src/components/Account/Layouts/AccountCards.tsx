@@ -61,8 +61,9 @@ export const AccountCards = ({ rows, visibleFields }: ModuleLayoutProps) => {
               <ModuleCardActions module="accounts" item={account} />
             </div>
 
-            {/* 标题行不换行：标题可省略并透出 title，平台徽章 margin-left:auto 固定在右上角（PRD §9.4） */}
-            <div className="flex flex-nowrap items-center gap-1.5 pr-20">
+            {/* 标题行不换行：标题可省略并透出 title，平台徽章 margin-left:auto 固定在右上角（PRD §9.4）；
+                O-8：与书签/Skill 卡片一致，右移 12px（pl-3）避让左上多选框留约 4px 净空、下移 2px（pt-0.5）视觉找齐 */}
+            <div className="flex flex-nowrap items-center gap-1.5 pt-0.5 pr-20 pl-3">
               <h4 className="min-w-0 flex-[0_1_auto] truncate font-semibold tracking-tight" title={account.name}>
                 {account.name}
               </h4>

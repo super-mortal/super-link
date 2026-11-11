@@ -69,7 +69,9 @@ export const CardsLayout = ({ rows, module, visibleFields }: ModuleLayoutProps) 
               <ModuleCardActions module={module} item={item} />
             </div>
 
-            <div className="flex min-w-0 flex-col gap-1">
+            {/* O-8：左上多选框（hover 或勾选时常显）右缘距卡片内容仅约 8px，标题首字符会被遮挡；
+                标题行容器整体右移 12px（pl-3）留出约 4px 净空、下移 2px（pt-0.5）与多选框视觉找齐（PRD 实测 pl-2 净空为 0px） */}
+            <div className="flex min-w-0 flex-col gap-1 pt-0.5 pl-3">
               <div className="flex flex-wrap items-center gap-1.5 pr-20">
                 <h4 className="min-w-0 truncate font-semibold tracking-tight">{moduleConfig.titleOf(item)}</h4>
                 {skill && <SourceBadge sourceType={item.source_type} />}

@@ -1,4 +1,4 @@
-import { Copy, Eye } from 'lucide-react';
+import { Copy, Eye, EyeOff } from 'lucide-react';
 import { cn } from '@/lib/utils.ts';
 
 const secretButtonClass =
@@ -29,21 +29,35 @@ export const CopySecretButton = ({
   </button>
 );
 
-/** 「显示明文」按钮：task10 接入按需解密后变为掩码 / 明文切换，本任务只给占位提示 */
-export const RevealSecretButton = ({ onReveal, label = '显示明文' }: { onReveal: () => void; label?: string }) => (
-  <button
-    type="button"
-    aria-label={label}
-    title={label}
-    className={secretButtonClass}
-    onClick={(event) => {
-      event.stopPropagation();
-      onReveal();
-    }}
-  >
-    <Eye className="h-3.5 w-3.5" />
-  </button>
-);
+/**
+ * 「显示 / 隐藏明文」按钮（掩码 ⇄ 明文切换，PRD §7.4）。
+ * revealed 为 true 时切换为「隐藏」图标与文案；列表态的占位调用只传 onReveal。
+ */
+export const RevealSecretButton = ({
+  onReveal,
+  label,
+  revealed = false,
+}: {
+  onReveal: () => void;
+  label?: string;
+  revealed?: boolean;
+}) => {
+  const title = label ?? (revealed ? '隐藏明文' : '显示明文');
+  return (
+    <button
+      type="button"
+      aria-label={title}
+      title={title}
+      className={secretButtonClass}
+      onClick={(event) => {
+        event.stopPropagation();
+        onReveal();
+      }}
+    >
+      {revealed ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+    </button>
+  );
+};
 
 /**
  * 定长密码掩码：位数固定不反映真实长度，避免通过点数推断密码长短（PRD §7.4）。

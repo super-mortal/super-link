@@ -3,19 +3,30 @@ import { observer } from 'mobx-react-lite';
 import { Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button.tsx';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card.tsx';
+import { Card, CardContent } from '@/components/ui/card.tsx';
 import { Dashboard } from '@/layouts/Dashboard.tsx';
 import { SidebarToggler } from '@/components/Sidebar/SidebarToggler.tsx';
+import { AccountDetailHeader } from '@/components/Account/AccountDetailHeader.tsx';
+import { AccountCredentials } from '@/components/Account/AccountCredentials.tsx';
+import { AccountNotesCard } from '@/components/Account/AccountNotesCard.tsx';
+import { AccountAuthorizationsSection } from '@/components/Account/AccountAuthorizationsSection.tsx';
+import { AccountInfoPanel } from '@/components/Account/AccountInfoPanel.tsx';
+import { notifyAccountDialogPending } from '@/components/Account/accountMessages.ts';
+import { useAccountSecretDecrypt } from '@/hooks/useAccountSecretDecrypt.ts';
 import { StoreContext, VaultStoreContext } from '@/store/storeContext.ts';
+import Loading from '@/layouts/Loading.tsx';
 import type { AccountDetailType } from '@/lib/types.ts';
 
 /**
- * `/accounts/:accountID` 账号详情占位页（PRD §5.2）。
+ * `/accounts/:accountID` 账号详情页（PRD §5.2 / §10.4）。
  *
- * 详情本体（凭据 / 授权关系 / 备注 / 账号状态，PRD §10.4）在后续任务接入，
- * 这里先落地最小可用结构：未解锁重定向回 `/accounts`、已解锁时展示账号 id、
- * 返回按钮，并预留 `fetchAccountDetail` 的调用位置——数据链路已由 mainStore 提供，
- * 后续只需把 detail 渲染成正式布局，不需要再改调用方式。
+ * 结构：头部（徽章 + 操作）→ 主内容两栏（凭据 / 授权关系 / 备注 + 右栏基本信息 / 账号状态），
+ * ≥1024px 主栏 2fr + 侧栏 1fr，<1024px 单列（PRD §10.7）。
+ *
+ * 解锁与加载顺序（task8 观察项）：**锁定态不拉详情**——密文接口在锁定态没有意义，
+ * 且重定向回 `/accounts` 前多发一次请求会暴露「用户看过哪个账号」的时序信息，
+ * 因此 fetch 放在解锁判断之后；自动锁定触发时同样直接重定向，不渲染任何明文。
+ * 解密不经过 MobX：明文只经 useAccountSecretDecrypt 的组件 state 与 vaultSession 内存缓存流转。
  */
 export const AccountDetail = observer(() => {
   const store = useContext(StoreContext);
@@ -24,22 +35,42 @@ export const AccountDetail = observer(() => {
   const navigate = useNavigate();
   const location = useLocation();
   const accountID = Number(params.accountID);
+  const validID = Number.isInteger(accountID) && accountID > 0;
 
   const [detail, setDetail] = useState<AccountDetailType | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
 
-  /** 拉取详情（元数据 + 密文 + 授权关系）；解密发生在调用方，不在本页做任何处理 */
+  /** 拉取详情（元数据 + 密文 + 授权关系）；解密发生在组件内按需进行，store 只搬运密文 */
   const loadDetail = useCallback(async () => {
-    if (!Number.isInteger(accountID) || accountID <= 0) {
+    if (!validID) {
       return;
     }
 
     const result = await store.fetchAccountDetail(accountID);
     setDetail(result);
-  }, [store, accountID]);
+    setLoadFailed(result === null);
+  }, [store, accountID, validID]);
 
+  // 解锁判断放在 fetch 之前：锁定态（含自动锁定回落）一律不请求详情接口
   useEffect(() => {
+    if (!vault.unlocked) {
+      return;
+    }
     void loadDetail();
-  }, [loadDetail]);
+  }, [loadDetail, vault.unlocked]);
+
+  // 详情未加载时 id 传 0：此时所有解密入口都不会被渲染触发，仅占位保持 hook 顺序稳定
+  const secretActions = useAccountSecretDecrypt(detail?.id ?? 0, detail?.secrets);
+
+  const handleDelete = useCallback(async () => {
+    if (!detail) {
+      return;
+    }
+    const ok = await store.deleteAccounts([detail.id]);
+    if (ok) {
+      navigate('/accounts');
+    }
+  }, [detail, store, navigate]);
 
   // 直接进入详情（非列表跳转）时没有历史记录，退回账号库列表
   const goBack = () => {
@@ -70,24 +101,44 @@ export const AccountDetail = observer(() => {
           </button>
         </div>
 
-        <Card className="max-w-2xl">
-          <CardHeader>
-            <CardTitle className="text-xl">账号详情占位</CardTitle>
-            <CardDescription>
-              账号 ID：{Number.isInteger(accountID) && accountID > 0 ? accountID : '无效'}
-              {detail ? `（${detail.name}）` : ''}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <div className="text-muted-foreground rounded-lg border border-dashed p-8 text-center text-sm">
-              凭据、授权关系、备注与账号状态会在后续任务接入，这里先保留占位容器。
+        {!validID || (loadFailed && !detail) ? (
+          <Card className="max-w-md">
+            <CardContent className="flex flex-col items-center gap-4 py-10">
+              <p className="text-muted-foreground text-sm">{validID ? '账号不存在或加载失败' : '账号 ID 无效'}</p>
+              <Button variant="outline" onClick={goBack}>
+                <ArrowLeft />
+                返回账号库
+              </Button>
+            </CardContent>
+          </Card>
+        ) : !detail ? (
+          <Loading />
+        ) : (
+          <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
+            <AccountDetailHeader
+              account={detail}
+              onCopyPassword={secretActions.copyPassword}
+              onRefresh={loadDetail}
+              onEdit={notifyAccountDialogPending}
+              onLock={() => vault.lock()}
+              onDelete={handleDelete}
+            />
+
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+              <div className="flex flex-col gap-4 lg:col-span-2">
+                <AccountCredentials account={detail} secretActions={secretActions} />
+                <AccountAuthorizationsSection count={detail.authorizations.length} />
+                <AccountNotesCard
+                  notes={secretActions.notes}
+                  pending={secretActions.notesPending}
+                  error={secretActions.notesError}
+                  loadNotes={secretActions.loadNotes}
+                />
+              </div>
+              <AccountInfoPanel account={detail} />
             </div>
-            <Button variant="outline" className="self-start" onClick={goBack}>
-              <ArrowLeft />
-              返回账号库
-            </Button>
-          </CardContent>
-        </Card>
+          </div>
+        )}
       </div>
     </Dashboard>
   );

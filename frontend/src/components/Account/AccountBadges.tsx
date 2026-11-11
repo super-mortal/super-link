@@ -1,4 +1,4 @@
-import { Lock, ShieldCheck, ShieldOff } from 'lucide-react';
+import { AlertTriangle, Lock, ShieldCheck, ShieldOff } from 'lucide-react';
 import { cn } from '@/lib/utils.ts';
 
 /** 平台徽章：卡片标题行、列表标题行、表格「平台」列共用 */
@@ -38,6 +38,21 @@ export const TotpBadge = ({ enabled }: { enabled: boolean }) =>
       2FA 未开启
     </span>
   );
+
+/**
+ * 「待处理」徽章（PRD §10.4）：未开 2FA，或密码超过 365 天未修改。
+ * 判定逻辑在 lib/accountFormat.ts（纯函数），这里只负责展示；
+ * 琥珀配色沿用 Skill「有更新」徽章的明暗两套色阶，不写死 hex。
+ */
+export const PendingBadge = () => (
+  <span
+    className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:border-amber-400/30 dark:bg-amber-400/15 dark:text-amber-300"
+    title="未开启两步验证，或密码超过 365 天未修改"
+  >
+    <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
+    待处理
+  </span>
+);
 
 /**
  * 备注加密提示：备注是密文字段，列表 / 卡片态不解密（task10 按需解密后进内存缓存），

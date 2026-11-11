@@ -4,7 +4,6 @@ import {
   SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarMenuSub,
   useSidebar,
 } from '@/components/ui/sidebar.tsx';
 import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible.tsx';
@@ -44,6 +43,7 @@ const TagItem = ({
   childTags = null,
   itemCount,
   isTagSelected,
+  depth = 0,
   className,
 }: {
   tag: TagType;
@@ -52,6 +52,8 @@ const TagItem = ({
   childTags?: React.ReactNode;
   itemCount: number;
   isTagSelected: boolean;
+  /** 0 = 一级标签，每往下一级 +1；用于压缩缩进与缩小色点（PRD O-10） */
+  depth?: number;
   className?: string;
 }) => {
   const prefStore = React.useContext(PreferencesStoreContext);
@@ -76,7 +78,9 @@ const TagItem = ({
         onClick={selectTag}
         isActive={isTagSelected}
         className={cn(
-          prependedNode ? `ps-0` : 'ps-8',
+          // O-10 缩进规则：一级（含二级）叶子固定左内边距 24px，第三级起收到 12px，
+          // 配合外层列表收窄的边距，避免深层标签逐级变窄；父级由 chevron 提供缩进故不加左内边距
+          prependedNode ? 'ps-0' : depth >= 2 ? 'ps-3' : 'ps-6',
           prefStore.displaySidebarTagItemCounts
             ? 'group-has-data-[sidebar=menu-action]/menu-item:pr-12 pointer-coarse:group-has-data-[sidebar=menu-action]/menu-item:pr-17'
             : 'group-has-data-[sidebar=menu-action]/menu-item:pr-8 pointer-coarse:group-has-data-[sidebar=menu-action]/menu-item:pr-8',
@@ -87,9 +91,12 @@ const TagItem = ({
         {prependedNode}
 
         <div className={cn('flex w-full items-center gap-2')}>
-          <span className={cn('h-2.5 w-2.5 flex-none rounded-full', getColorClass(tag.color))}></span>
+          {/* 子级色点从 10px 缩到 8px，与父级 500 字重一起表达层级（PRD O-10） */}
+          <span
+            className={cn('flex-none rounded-full', depth === 0 ? 'size-2.5' : 'size-2', getColorClass(tag.color))}
+          ></span>
 
-          <span title={tag.title} className="line-clamp-1 break-all">
+          <span title={tag.title} className={cn('line-clamp-1 break-all', prependedNode && 'font-medium')}>
             {highlightText !== null
               ? tag.title.split(new RegExp(`(${highlightText})`, 'gi')).map((part, i) =>
                   part.toLowerCase() === highlightText.toLowerCase() ? (
@@ -105,7 +112,8 @@ const TagItem = ({
           {tag.description && (
             <Tooltip>
               <TooltipTrigger asChild className="pointer-coarse:hidden">
-                <Info className="h-3 w-3 opacity-50" />
+                {/* 说明图标默认隐藏，仅 hover 当前行时淡入，弱化次要信息（PRD O-10） */}
+                <Info className="h-3 w-3 opacity-0 transition-opacity group-hover/menu-item:opacity-50" />
               </TooltipTrigger>
               <TooltipContent>
                 <p className="max-w-xs whitespace-pre-wrap">{tag.description}</p>
@@ -119,16 +127,29 @@ const TagItem = ({
 
       {childTags}
 
-      <TagActions tag={tag} isEditOpen={isEditOpen} setIsEditOpen={setIsEditOpen} hasChildTags={childTags !== null} />
+      <TagActions
+        tag={tag}
+        isEditOpen={isEditOpen}
+        setIsEditOpen={setIsEditOpen}
+        hasChildTags={childTags !== null}
+        isActive={isTagSelected}
+      />
 
       {prefStore.displaySidebarTagItemCounts && (
-        <SidebarMenuBadge className="pointer-coarse:right-6">{itemCount}</SidebarMenuBadge>
+        // 选中行计数用主色前景（原型 .side-tag-row:has(.active) .side-tag-count）。
+        // 注意用元素自身的 important，不要用 peer-data-[active=true]/menu-button: 变体——
+        // 该变体会命中行内所有兄弟节点（包括三点按钮），与按钮的 hover 前景互相干扰
+        <SidebarMenuBadge
+          className={cn('text-[11px]! opacity-80 pointer-coarse:right-6', isTagSelected && 'text-primary-foreground!')}
+        >
+          {itemCount}
+        </SidebarMenuBadge>
       )}
     </SidebarMenuItem>
   );
 };
 
-const TagActions = ({ tag, isEditOpen, setIsEditOpen, hasChildTags }) => {
+const TagActions = ({ tag, isEditOpen, setIsEditOpen, hasChildTags, isActive }) => {
   const { isMobile } = useSidebar();
   const store = React.useContext(StoreContext);
 
@@ -165,7 +186,21 @@ const TagActions = ({ tag, isEditOpen, setIsEditOpen, hasChildTags }) => {
       )}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <SidebarMenuAction showOnHover={true} className="cursor-pointer rounded-sm">
+          {/* O-10：24px 圆形热区，hover 当前行才淡入 + 轻微缩放；操作菜单经 DropdownMenuPortal
+              挂到 body，按钮自身的 transform 不会破坏菜单定位（原型里 .dd 容器加 transform 踩过的坑） */}
+          <SidebarMenuAction
+            showOnHover={true}
+            className={cn(
+              'top-1! right-1! cursor-pointer rounded-full!',
+              'size-6! scale-90 pointer-coarse:scale-100 [&>svg]:size-4.5!',
+              'peer-hover/menu-button:scale-100 hover:scale-100 data-[state=open]:scale-100',
+              // 选中行是深色底：图标换主色前景。按钮自身 hover / 菜单展开时会切到浅色圆底，
+              // 前景必须用同等 important 的 hover 变体覆盖回 sidebar-accent-foreground——
+              // important 的基础色会压过非 important 的 hover 变体，否则图标与浅底同色不可见
+              isActive &&
+                'text-primary-foreground! hover:text-sidebar-accent-foreground! data-[state=open]:text-sidebar-accent-foreground!'
+            )}
+          >
             <IconDotsVertical />
             <span className="sr-only">更多</span>
           </SidebarMenuAction>
@@ -304,6 +339,7 @@ export function SidebarTag({
   isChildTagSelected,
   childTagsMatchSearch,
   highlightText,
+  depth = 0,
 }: {
   tag: TagType;
   renderedChildTags: React.ReactNode[];
@@ -312,6 +348,8 @@ export function SidebarTag({
   isChildTagSelected: boolean;
   childTagsMatchSearch: boolean;
   highlightText: string | null;
+  /** 0 = 一级标签，每往下一级 +1；用于压缩缩进与子列表分隔线（PRD O-10） */
+  depth?: number;
 }) {
   const [isCollapsibleOpen, setIsCollapsibleOpen] = React.useState(isChildTagSelected || childTagsMatchSearch);
 
@@ -337,13 +375,15 @@ export function SidebarTag({
     <Collapsible className="group/collapsible" open={isCollapsibleOpen}>
       <TagItem
         tag={tag}
+        depth={depth}
         itemCount={itemCount}
         isTagSelected={isTagSelected}
         highlightText={highlightText}
         className={cn(isChildTagSelected && !isCollapsibleOpen ? 'bg-primary/10' : '', 'gap-0')}
         prependedNode={
           <div
-            className="p-2 hover:cursor-pointer"
+            // chevron 热区扩大到 28px 并加 hover 背景（PRD O-10）；点击只切换展开，不触发行选中
+            className="hover:bg-sidebar-accent cursor-pointer rounded-sm p-1.5"
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -355,12 +395,27 @@ export function SidebarTag({
         }
         childTags={
           <CollapsibleContent>
-            <SidebarMenuSub className="mr-0 pr-0">{renderedChildTags}</SidebarMenuSub>
+            {/* O-10：每级一条左侧竖线表达层级；一级子列表缩进 8px + 6px，更深层级只保留
+                4px + 4px 增量（按钮内边距同步收到 12px），避免深层标签越来越窄 */}
+            <ul
+              className={cn(
+                'border-sidebar-border flex min-w-0 flex-col gap-1 border-l py-0.5',
+                depth === 0 ? 'ms-2 ps-1.5' : 'ms-1 ps-1'
+              )}
+            >
+              {renderedChildTags}
+            </ul>
           </CollapsibleContent>
         }
       />
     </Collapsible>
   ) : (
-    <TagItem tag={tag} itemCount={itemCount} highlightText={highlightText} isTagSelected={isTagSelected} />
+    <TagItem
+      tag={tag}
+      depth={depth}
+      itemCount={itemCount}
+      highlightText={highlightText}
+      isTagSelected={isTagSelected}
+    />
   );
 }

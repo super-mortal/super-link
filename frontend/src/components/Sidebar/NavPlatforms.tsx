@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { observer } from 'mobx-react-lite';
 import { toast } from 'sonner';
+import { Globe } from 'lucide-react';
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -14,6 +15,7 @@ import {
 import { MODULES } from '@/lib/modules.ts';
 import { useAccountListState } from '@/hooks/useAccountListState.ts';
 import { StoreContext, VaultStoreContext } from '@/store/storeContext.ts';
+import { SidebarAllRow } from '@/components/Sidebar/SidebarAllRow.tsx';
 
 /**
  * 侧栏「平台」分区（PRD §5.1）。
@@ -28,7 +30,7 @@ export const NavPlatforms = observer(() => {
   const store = React.useContext(StoreContext);
   const vault = React.useContext(VaultStoreContext);
   const { isMobile, toggleSidebar } = useSidebar();
-  const { platform, togglePlatformFilter } = useAccountListState();
+  const { platform, setPlatformFilter, togglePlatformFilter } = useAccountListState();
 
   const platformCounts = React.useMemo(() => {
     const counts = new Map<string, number>();
@@ -63,13 +65,36 @@ export const NavPlatforms = observer(() => {
     }
   };
 
+  // 「全部」入口：清除平台筛选（PRD O-10）；锁定态与点平台一样统一提示先解锁
+  const selectAllPlatforms = () => {
+    if (!vault.unlocked) {
+      toast.error('请先解锁账号库', { position: 'top-center' });
+      return;
+    }
+
+    setPlatformFilter(null);
+
+    if (isMobile) {
+      toggleSidebar();
+    }
+  };
+
   return (
-    <SidebarGroup className="gap-2">
+    <SidebarGroup className="border-sidebar-border mt-1 gap-2 border-t">
       <div className="me-1 flex items-center justify-end gap-2">
         <SidebarGroupLabel className="me-auto">{MODULES.accounts.sectionLabel}</SidebarGroupLabel>
       </div>
 
       <SidebarGroupContent className="flex flex-col gap-2">
+        {/* 「全部」入口与平台列表用细线分隔（PRD O-10）；计数为账号库条目总数，默认高亮 */}
+        <SidebarMenu className="border-sidebar-border mb-1.5 border-b pb-1.5">
+          <SidebarAllRow
+            icon={<Globe />}
+            count={store.accounts.length}
+            isActive={platform === null}
+            onSelect={selectAllPlatforms}
+          />
+        </SidebarMenu>
         {platformCounts.length > 0 ? (
           <SidebarMenu>
             {platformCounts.map(({ name, count }) => (

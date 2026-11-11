@@ -73,7 +73,11 @@ export const AppSidebar = observer(({ ...props }: AppSidebarProps) => {
       </SidebarHeader>
       <SidebarContent className="no-scrollbar gap-0">
         <ModuleSwitcher />
-        {isAccountsRoute ? <NavPlatforms /> : <NavTags itemIDsByTagID={itemIDsByTagID} />}
+        {isAccountsRoute ? (
+          <NavPlatforms />
+        ) : (
+          <NavTags itemIDsByTagID={itemIDsByTagID} itemCount={moduleItems.length} />
+        )}
       </SidebarContent>
       {store.user && (
         <SidebarFooter>

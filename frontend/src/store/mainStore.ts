@@ -50,6 +50,16 @@ class MainStore {
     installed_version: string | null;
     latest_version: string | null;
     update_available: boolean | null;
+    /**
+     * 最新 GitHub Release 的说明信息（O-4）：随 app-info 一起下发，与版本号共用 12 小时缓存。
+     * GitHub 不可达、release 未填写说明或后端较旧没有该字段时为 null，前端按降级处理。
+     */
+    latest_release?: {
+      name: string | null;
+      body: string | null;
+      published_at: string | null;
+      html_url: string | null;
+    } | null;
   } | null = null;
 
   /* ----------------------------- 账号库（PRD §5.1.1 模块隔离） ----------------------------- */

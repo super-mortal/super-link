@@ -224,7 +224,9 @@ function getAppUpdateInfo(): ?array
 		$cache_period = 60 * 60 * 12; // 12 hours
 		$data = file_exists($cache_file_path) ? file_get_contents($cache_file_path) : '';
 		$data = json_decode($data, true);
-		$is_cache_expired = ($data['cache_timestamp'] ?? 0) + $cache_period < time();
+		// 缓存结构升级（O-4：新增 latest_release 说明字段）：旧缓存没有该键时视为过期，重新拉取一次
+		$is_cache_structure_outdated = !is_array($data) || !array_key_exists('latest_release', $data);
+		$is_cache_expired = $is_cache_structure_outdated || ($data['cache_timestamp'] ?? 0) + $cache_period < time();
 		if (!$is_cache_expired) {
 			return $data;
 		}
@@ -274,6 +276,14 @@ function fetchAppUpdateInfo(): ?array
 		return [
 			'latest_version' => ltrim($release['tag_name'], 'vV'),
 			'release_url' => $release['html_url'] ?? null,
+			// O-4：release 说明（Markdown 原文）随版本号一起缓存下发，供前端在更新前展示；
+			// body 为 null 表示该 release 没有填写说明，前端据此走降级提示
+			'latest_release' => [
+				'name' => $release['name'] ?? null,
+				'body' => $release['body'] ?? null,
+				'published_at' => $release['published_at'] ?? null,
+				'html_url' => $release['html_url'] ?? null,
+			],
 		];
 	} catch (Exception $e) {
 		return null;

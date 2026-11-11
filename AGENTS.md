@@ -6,12 +6,28 @@
 
 ## 项目概览
 
-super-link 是自托管的个人数据管理工具，从书签管理起步，通过模块机制扩展（当前：书签、Skill）。数据完全由用户自持。
+super-link 是自托管的个人数据管理工具，从书签管理起步，通过模块机制扩展（当前：书签、Skill、账号库）。数据完全由用户自持。
 
 - 前端：React 19 + TypeScript 5.8 + Vite 7 SPA（`frontend/`）
 - 后端：PHP 8.4 + Apache，纯 JSON REST API（无服务端渲染 UI）
 - 数据库：SQLite（默认 `storage/link_navigator.db`）
-- 文档：产品需求文档放在 `docs/prd/`；规划中的「账号库」模块见 [docs/prd/account-vault.md](docs/prd/account-vault.md)，本地 HTML 原型在 `mockups/`（不随仓库提交）
+- 文档：产品需求文档放在 `docs/prd/`；账号库见 [docs/prd/account-vault.md](docs/prd/account-vault.md)，优化项见 [docs/prd/optimization.md](docs/prd/optimization.md)；本地 HTML 高保真交互原型在 `mockups/`（不随仓库提交）
+
+## 协作与发布流程
+
+### 产品阶段：原型 + PRD 先行
+
+- 新功能 / 优化先在本地 `mockups/` 做**高保真可交互原型**（living prototype），并同步更新 `docs/prd/` 下对应 PRD。
+- **用户未明确同意进入实现阶段前，不写生产代码**：只改原型、PRD 与文档；代码改动需单独确认。
+- 原型与 PRD 必须同一轮一起变；PRD 的「已确认决策 / 变更记录」要写清影响范围。
+- `mockups/` 不入库；验证截图、录屏、临时 HTML、浏览器 profile 等产物必须清理。
+
+### 版本发布：必须用户确认
+
+- 发布前先整理版本号、更新日志与影响范围，交给用户过目。
+- **用户明确确认前**：不推送 tag、不创建 GitHub Release、不 `git push`、不把版本信息写入 `AGENTS.md`。
+- 用户确认后，才可执行发布相关操作，并把版本信息 / 发布流程同步到 `AGENTS.md`。
+- 发布说明建议按「新增 / 修复 / 优化 / 升级提示」四段编写；应用内通过 GitHub Release 的 `body` 展示（见 `docs/prd/optimization.md` O-4）。
 
 ## 技术栈与版本
 
@@ -92,6 +108,7 @@ composer install --no-dev --optimize-autoloader   # 运行时依赖：guzzlehttp
   - `success($message, $data)` → `{ success: true, message, data }`
   - `data($payload)` → 直接返回 payload（如 `GET /api/items` 返回数组、`GET /api/tags` 返回按 id 的对象）
   - 两种形态并存，改接口前先看对应 controller，不要默认有统一包裹。
+  - `GET /api/app-info` 附带 `latest_release`（`name` / `body` / `published_at` / `html_url`，来自 GitHub Releases API 最新 release 的说明 Markdown，与版本号共用 12 小时缓存；GitHub 不可达时为 null，前端降级展示，见 optimization.md O-4）。
 - 中间件（`framework/bootstrap.php` 顺序）：CSRF → DatabaseMigrations → Authentication。
   - CSRF：写操作校验 `X-CSRF-TOKEN` 请求头（或 `csrf_token` 字段）；GET 跳过；token 同时写入 `CSRF-TOKEN` cookie。
   - Authentication：`users` 表非空即启用认证，未登录返回 401；`AuthLoginController` 跳过；数据库未初始化时跳过。

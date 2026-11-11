@@ -4,9 +4,9 @@ import { Bug, ExternalLink, FileText, Lightbulb, Mail, Server } from 'lucide-rea
 import { IconBrandBilibili, IconBrandGithub } from '@tabler/icons-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Spinner } from '@/components/ui/spinner';
 import { StoreContext } from '@/store/storeContext';
 import { observer } from 'mobx-react-lite';
+import { ReleaseNotesDialog, formatReleaseDate } from '@/components/Settings/ReleaseNotesDialog.tsx';
 
 const links = [
     {
@@ -14,12 +14,6 @@ const links = [
       label: '腾讯云',
       url: 'https://cloud.tencent.com/act/cps/redirect?redirect=37409&cps_key=3a14fee6c971648adeff4eb009958072',
       description: '实惠的云服务器，快速，安全部署',
-    },
-    {
-      icon: FileText,
-      label: '更新日志',
-      url: 'https://github.com/super-mortal/super-link',
-      description: '了解最新变更',
     },
   ],
   socialLinks = [
@@ -42,17 +36,19 @@ const links = [
 
 export const SettingsAbout = observer(() => {
   const store = React.useContext(StoreContext);
-  const [isUpdating, setIsUpdating] = React.useState(false);
   const [updateTriggered, setUpdateTriggered] = React.useState(false);
   const [reloadCountdown, setReloadCountdown] = React.useState(5);
+  const [isReleaseNotesOpen, setIsReleaseNotesOpen] = React.useState(false);
 
-  const handleUpdate = async () => {
-    setIsUpdating(true);
-    const success = await store.updateApp();
-    setIsUpdating(false);
-    if (success) {
+  const publishedAt = formatReleaseDate(store.appInfo?.latest_release?.published_at);
+
+  // 触发更新：由「更新内容」弹窗二次确认后调用，沿用既有 POST /api/app/update（Watchtower）链路
+  const triggerUpdate = async () => {
+    const triggered = await store.updateApp();
+    if (triggered) {
       setUpdateTriggered(true);
     }
+    return triggered;
   };
 
   // 更新触发后倒计时自动刷新页面（等待新容器就绪）
@@ -82,10 +78,17 @@ export const SettingsAbout = observer(() => {
                   更新已触发，应用正在重启，{reloadCountdown} 秒后自动刷新...
                 </p>
               ) : (
-                <Button variant="default" size="sm" onClick={handleUpdate} disabled={isUpdating}>
-                  {isUpdating && <Spinner />}
-                  立即更新
-                </Button>
+                <>
+                  <p className="text-muted-foreground text-sm">
+                    可更新至 v{store.appInfo?.latest_version ?? ''}
+                    {publishedAt ? ` · 发布于 ${publishedAt}` : ''}
+                  </p>
+                  {/* 更新前先看更新说明：打开弹窗查看版本与变更内容，二次确认后才触发更新（PRD O-4） */}
+                  <Button variant="default" size="sm" onClick={() => setIsReleaseNotesOpen(true)}>
+                    <FileText />
+                    查看更新内容
+                  </Button>
+                </>
               )}
             </div>
           )}
@@ -113,6 +116,20 @@ export const SettingsAbout = observer(() => {
                 </Button>
               );
             })}
+            {/* 更新日志入口（PRD O-4）：仅在有新版本时出现，点击打开「更新内容」弹窗而不是跳外链 */}
+            {store.appInfo?.update_available && (
+              <Button
+                variant="ghost"
+                className="h-auto w-full justify-start py-2 sm:py-3"
+                onClick={() => setIsReleaseNotesOpen(true)}
+              >
+                <FileText className="mt-1.5 mr-2 h-4 w-4 flex-shrink-0 sm:mr-3" />
+                <div className="flex-1 space-y-1 text-left text-wrap">
+                  <div className="text-sm font-medium">更新日志</div>
+                  <div className="text-muted-foreground text-xs">查看最新版本的变更内容</div>
+                </div>
+              </Button>
+            )}
           </CardContent>
         </Card>
         <Card className="gap-4">
@@ -167,6 +184,12 @@ export const SettingsAbout = observer(() => {
           })}
         </CardContent>
       </Card>
+
+      <ReleaseNotesDialog
+        open={isReleaseNotesOpen}
+        onOpenChange={setIsReleaseNotesOpen}
+        onConfirmUpdate={triggerUpdate}
+      />
     </div>
   );
 });

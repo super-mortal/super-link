@@ -1,5 +1,6 @@
 import { AlertTriangle, Lock, ShieldCheck, ShieldOff } from 'lucide-react';
 import { cn } from '@/lib/utils.ts';
+import type { AccountAuthorizationStatusType } from '@/lib/types.ts';
 
 /** 平台徽章：卡片标题行、列表标题行、表格「平台」列共用 */
 export const PlatformBadge = ({ platform, className }: { platform: string; className?: string }) => (
@@ -64,3 +65,24 @@ export const EncryptedNotesHint = () => (
     备注已加密，解锁后在详情页查看
   </p>
 );
+
+/**
+ * 授权状态徽章（PRD §6.4 / §10.4）：active 生效中、revoked 已失效。
+ * revoked 沿用「待处理」的琥珀色系（授权被撤销后仍可能有用例回溯，不需要红色告警）。
+ */
+export const AuthorizationStatusBadge = ({ status }: { status: AccountAuthorizationStatusType }) =>
+  status === 'active' ? (
+    <span
+      className="bg-primary/10 text-primary inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium"
+      title="该授权仍然有效"
+    >
+      生效中
+    </span>
+  ) : (
+    <span
+      className="inline-flex items-center rounded-full border border-amber-500/40 bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:border-amber-400/30 dark:bg-amber-400/15 dark:text-amber-300"
+      title="该授权已被撤销"
+    >
+      已失效
+    </span>
+  );

@@ -9,7 +9,7 @@ import { SidebarToggler } from '@/components/Sidebar/SidebarToggler.tsx';
 import { AccountDetailHeader } from '@/components/Account/AccountDetailHeader.tsx';
 import { AccountCredentials } from '@/components/Account/AccountCredentials.tsx';
 import { AccountNotesCard } from '@/components/Account/AccountNotesCard.tsx';
-import { AccountAuthorizationsSection } from '@/components/Account/AccountAuthorizationsSection.tsx';
+import { AuthorizationList } from '@/components/Account/AuthorizationList.tsx';
 import { AccountInfoPanel } from '@/components/Account/AccountInfoPanel.tsx';
 import { notifyAccountDialogPending } from '@/components/Account/accountMessages.ts';
 import { useAccountSecretDecrypt } from '@/hooks/useAccountSecretDecrypt.ts';
@@ -127,7 +127,11 @@ export const AccountDetail = observer(() => {
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
               <div className="flex flex-col gap-4 lg:col-span-2">
                 <AccountCredentials account={detail} secretActions={secretActions} />
-                <AccountAuthorizationsSection count={detail.authorizations.length} />
+                <AuthorizationList
+                  authorizations={detail.authorizations}
+                  accountId={detail.id}
+                  onRefresh={loadDetail}
+                />
                 <AccountNotesCard
                   notes={secretActions.notes}
                   pending={secretActions.notesPending}

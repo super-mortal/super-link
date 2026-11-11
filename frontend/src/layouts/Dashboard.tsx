@@ -33,7 +33,7 @@ export const Dashboard = observer(({ children }: { children: React.ReactNode }) 
         >
           <ResizablePanelGroup
             orientation="horizontal"
-            className="fixed w-full"
+            className="fixed inset-0"
             defaultLayout={defaultLayout}
             onLayoutChanged={onLayoutChanged}
           >

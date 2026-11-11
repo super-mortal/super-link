@@ -9,9 +9,9 @@
   line-height: 1.5;
   font-weight: 400;
 
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
+  /* 原生滚动条 / 表单控件跟随应用主题（暗色由下方 .dark 覆盖），
+     不再用 Vite 模板的 light dark（那会跟随操作系统，与 faved-ui-theme 可能不一致） */
+  color-scheme: light;
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -113,6 +113,9 @@ a:hover {
 }
 
 .dark {
+  /* 与 :root 的 light 对应：暗色主题下原生滚动条 / 表单控件也用暗色渲染 */
+  color-scheme: dark;
+
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
@@ -154,6 +157,26 @@ a:hover {
   body {
     pointer-events: auto !important;
     @apply bg-background text-foreground;
+  }
+
+  /* 根元素铺满视口并统一用语义背景色打底：列表页侧栏是 fixed 定位（脱离文档流），
+     body 自身没有高度，页面回弹 / 滚动时一旦露出画布就会显示浏览器默认底色，
+     因此 html / body / #root 都按 --background 兜底，保证浅色与暗色主题均无黑边 */
+  html,
+  body,
+  #root {
+    min-height: 100svh;
+    background-color: var(--background);
+  }
+
+  /* 移动端动态视口：svh 按「浏览器 UI 展开时的小视口」计算，iOS 地址栏收起后
+     可见区域变大仍会露底；dvh 跟随实际可见高度，这里做渐进增强 */
+  @supports (min-height: 100dvh) {
+    html,
+    body,
+    #root {
+      min-height: 100dvh;
+    }
   }
 
   button {

@@ -694,9 +694,25 @@ class MainStore {
     return (response?.data?.account ?? null) as AccountType | null;
   };
 
-  updateAccount = async (id: number, payload: Partial<AccountInputType>): Promise<boolean> => {
+  /**
+   * 更新账号（PATCH 部分更新：未传字段保持原值）。
+   *
+   * skipSuccessMessage 供「新建后补写密文」使用：那一跳是创建流程的第二步，
+   * 再弹一次「账号更新成功」会让用户困惑，此时只保留创建的提示。
+   */
+  updateAccount = async (
+    id: number,
+    payload: Partial<AccountInputType>,
+    skipSuccessMessage: boolean = false
+  ): Promise<boolean> => {
     // id 放请求体：后端从「JSON 体 + 查询参数」的合并入参里读 id
-    const response = await this.runRequest(API_ENDPOINTS.accounts.update, 'PATCH', { id, ...payload }, '更新账号失败');
+    const response = await this.runRequest(
+      API_ENDPOINTS.accounts.update,
+      'PATCH',
+      { id, ...payload },
+      '更新账号失败',
+      skipSuccessMessage
+    );
 
     if (response === null) {
       return false;

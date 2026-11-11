@@ -28,7 +28,11 @@ import { AccountGroupFilter } from '@/components/Account/AccountGroupFilter.tsx'
 import { AccountList } from '@/components/Account/Layouts/AccountList.tsx';
 import { AccountCards } from '@/components/Account/Layouts/AccountCards.tsx';
 import { AccountTable } from '@/components/Account/Layouts/AccountTable.tsx';
-import { notifyAccountDialogPending } from '@/components/Account/accountMessages.ts';
+import {
+  AccountDialog,
+  AccountDialogContext,
+  type AccountDialogControllerType,
+} from '@/components/Account/AccountDialog.tsx';
 import { MODULE_COLUMNS, MODULE_COLUMN_ORDER } from '@/components/Table/Fields/moduleColumns.tsx';
 import { MODULES, type ModuleItemType } from '@/lib/modules.ts';
 import { LayoutType } from '@/lib/types.ts';
@@ -111,6 +115,20 @@ export const AccountVaultList = observer(() => {
     scrollContainerRef.current = node;
     setScrollContainerEl(node);
   }, []);
+
+  /** 账号弹窗状态：新建 / 编辑（按账号 id）二选一，null = 关闭 */
+  const [accountDialog, setAccountDialog] = useState<{ mode: 'create' } | { mode: 'edit'; id: number } | null>(null);
+  /**
+   * 弹窗控制器经 context 下发：工具栏、空态与三种布局的操作菜单（ModuleCardActions）
+   * 共用同一组打开入口，不必把回调透传进共享的 moduleColumns / 布局组件。
+   */
+  const accountDialogController = useMemo<AccountDialogControllerType>(
+    () => ({
+      openCreate: () => setAccountDialog({ mode: 'create' }),
+      openEdit: (id: number) => setAccountDialog({ mode: 'edit', id }),
+    }),
+    []
+  );
 
   /**
    * State and URL syncing
@@ -333,77 +351,91 @@ export const AccountVaultList = observer(() => {
   }
 
   return (
-    <div className="flex h-full flex-col">
-      <VaultToolbar
-        listControls={
-          <>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline">
-                  <Settings2 className="h-4 w-4" />
-                  <span className="hidden @xl/main:inline-block">视图</span>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="min-w-40">
-                <DropdownMenuLabel>布局</DropdownMenuLabel>
-                <div className="mx-1 mb-3">
-                  <LayoutSelector layout={layout} onChange={updateLayout} />
-                </div>
-                <DropdownMenuSeparator />
-                <DropdownMenuLabel>可见字段</DropdownMenuLabel>
-                <FieldToggler columns={fieldColumns} onChange={updateColumnVisibility} />
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <Search table={table} globalFilter={globalFilter} />
-            <Sorter sorts={sortOptions} selectedSort={selectedSortKey} onChange={updateSorting} />
-            <AccountGroupFilter />
-          </>
-        }
-      />
-
-      <div ref={setScrollContainerNode} className="h-full overflow-x-clip overflow-y-scroll">
-        {/* 平台筛选横幅：与书签的标签横幅同式样，提供「清除」快捷入口 */}
-        {platform && (
-          <div className="bg-muted text-muted-foreground mx-4 mt-4 flex items-center gap-2 rounded-md px-3 py-2 text-xs">
-            <Layers className="h-3 w-3 shrink-0" />
-            <span className="truncate">
-              按平台筛选：<b className="text-foreground font-medium">{platform}</b>
-            </span>
-            <button
-              type="button"
-              className="hover:text-foreground ml-auto flex shrink-0 items-center gap-1"
-              onClick={() => setPlatformFilter(null)}
-            >
-              <X className="h-3 w-3" />
-              清除
-            </button>
-          </div>
-        )}
-        {store.accounts.length > 0 ? (
-          <div className={`flex h-full flex-col justify-between gap-5 module-list--${layout}`}>
-            {layouts[layout]}
-            <Pagination
-              table={table}
-              countNoun={moduleConfig.pagination.count}
-              sizeNoun={moduleConfig.pagination.size}
-              scrollContainerRef={scrollContainerRef}
-            />
-          </div>
-        ) : (
-          <AccountEmptyState
-            variant={emptyVariant}
-            onAdd={notifyAccountDialogPending}
-            onClearPlatform={() => setPlatformFilter(null)}
-            onClearSearch={() => setUrlState({ search: null, page: 1 })}
-          />
-        )}
-        <BulkActionControls
-          table={table}
-          rowSelection={rowSelection}
-          contentElement={scrollContainerEl}
-          module="accounts"
+    <AccountDialogContext.Provider value={accountDialogController}>
+      <div className="flex h-full flex-col">
+        <VaultToolbar
+          onAdd={accountDialogController.openCreate}
+          listControls={
+            <>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline">
+                    <Settings2 className="h-4 w-4" />
+                    <span className="hidden @xl/main:inline-block">视图</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="min-w-40">
+                  <DropdownMenuLabel>布局</DropdownMenuLabel>
+                  <div className="mx-1 mb-3">
+                    <LayoutSelector layout={layout} onChange={updateLayout} />
+                  </div>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>可见字段</DropdownMenuLabel>
+                  <FieldToggler columns={fieldColumns} onChange={updateColumnVisibility} />
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <Search table={table} globalFilter={globalFilter} />
+              <Sorter sorts={sortOptions} selectedSort={selectedSortKey} onChange={updateSorting} />
+              <AccountGroupFilter />
+            </>
+          }
         />
+
+        <div ref={setScrollContainerNode} className="h-full overflow-x-clip overflow-y-scroll">
+          {/* 平台筛选横幅：与书签的标签横幅同式样，提供「清除」快捷入口 */}
+          {platform && (
+            <div className="bg-muted text-muted-foreground mx-4 mt-4 flex items-center gap-2 rounded-md px-3 py-2 text-xs">
+              <Layers className="h-3 w-3 shrink-0" />
+              <span className="truncate">
+                按平台筛选：<b className="text-foreground font-medium">{platform}</b>
+              </span>
+              <button
+                type="button"
+                className="hover:text-foreground ml-auto flex shrink-0 items-center gap-1"
+                onClick={() => setPlatformFilter(null)}
+              >
+                <X className="h-3 w-3" />
+                清除
+              </button>
+            </div>
+          )}
+          {store.accounts.length > 0 ? (
+            <div className={`flex h-full flex-col justify-between gap-5 module-list--${layout}`}>
+              {layouts[layout]}
+              <Pagination
+                table={table}
+                countNoun={moduleConfig.pagination.count}
+                sizeNoun={moduleConfig.pagination.size}
+                scrollContainerRef={scrollContainerRef}
+              />
+            </div>
+          ) : (
+            <AccountEmptyState
+              variant={emptyVariant}
+              onAdd={accountDialogController.openCreate}
+              onClearPlatform={() => setPlatformFilter(null)}
+              onClearSearch={() => setUrlState({ search: null, page: 1 })}
+            />
+          )}
+          <BulkActionControls
+            table={table}
+            rowSelection={rowSelection}
+            contentElement={scrollContainerEl}
+            module="accounts"
+          />
+        </div>
       </div>
-    </div>
+
+      {/* 弹窗挂在 Provider 内：三种布局的操作菜单（ModuleCardActions）经 context 打开编辑 */}
+      <AccountDialog
+        open={accountDialog !== null}
+        onOpenChange={(next) => {
+          if (!next) {
+            setAccountDialog(null);
+          }
+        }}
+        accountId={accountDialog?.mode === 'edit' ? accountDialog.id : null}
+      />
+    </AccountDialogContext.Provider>
   );
 });

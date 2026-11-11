@@ -1,10 +1,11 @@
-import { useContext, useEffect, useState, type ReactNode } from 'react';
+import { useContext, useEffect, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { Button } from '@/components/ui/button.tsx';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog.tsx';
 import { Input } from '@/components/ui/input.tsx';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select.tsx';
 import { Spinner } from '@/components/ui/spinner.tsx';
+import { AccountFormField } from '@/components/Account/AccountFormField.tsx';
 import { StoreContext } from '@/store/storeContext.ts';
 import type { AccountAuthorizationStatusType, AccountAuthorizationType, AuthorizationInputType } from '@/lib/types.ts';
 
@@ -24,29 +25,6 @@ const todayISO = () => new Date().toISOString().slice(0, 10);
 
 /** Radix Select 不允许空字符串 value，「不关联」用哨兵值表示 */
 const NO_LINKED_VALUE = 'none';
-
-/** 表单字段外壳：标签 + 必填星号；className 供跨列字段使用 */
-const FormField = ({
-  label,
-  htmlFor,
-  required,
-  className,
-  children,
-}: {
-  label: string;
-  htmlFor: string;
-  required?: boolean;
-  className?: string;
-  children: ReactNode;
-}) => (
-  <div className={`flex flex-col gap-1.5 ${className ?? ''}`}>
-    <label htmlFor={htmlFor} className="text-[13px] font-medium">
-      {label}
-      {required && <span className="text-destructive"> *</span>}
-    </label>
-    {children}
-  </div>
-);
 
 /**
  * 新增 / 编辑授权弹窗（PRD §9.8 / §10.3 / §10.4）：站点、站点账号标识、备注、关联账号、
@@ -128,7 +106,7 @@ export const AuthorizationFormDialog = observer(
           </DialogHeader>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <FormField label="站点" htmlFor="authorization-service" required>
+            <AccountFormField label="站点" htmlFor="authorization-service" required error={serviceError}>
               <Input
                 id="authorization-service"
                 value={service}
@@ -141,10 +119,9 @@ export const AuthorizationFormDialog = observer(
                 disabled={submitting}
                 aria-invalid={serviceError ? true : undefined}
               />
-              {serviceError && <p className="text-destructive text-xs">{serviceError}</p>}
-            </FormField>
+            </AccountFormField>
 
-            <FormField label="站点账号标识" htmlFor="authorization-identifier">
+            <AccountFormField label="站点账号标识" htmlFor="authorization-identifier">
               <Input
                 id="authorization-identifier"
                 value={identifier}
@@ -153,9 +130,9 @@ export const AuthorizationFormDialog = observer(
                 autoComplete="off"
                 disabled={submitting}
               />
-            </FormField>
+            </AccountFormField>
 
-            <FormField label="备注" htmlFor="authorization-note" className="sm:col-span-2">
+            <AccountFormField label="备注" htmlFor="authorization-note" className="sm:col-span-2">
               <Input
                 id="authorization-note"
                 value={note}
@@ -164,9 +141,9 @@ export const AuthorizationFormDialog = observer(
                 autoComplete="off"
                 disabled={submitting}
               />
-            </FormField>
+            </AccountFormField>
 
-            <FormField label="关联账号" htmlFor="authorization-linked">
+            <AccountFormField label="关联账号" htmlFor="authorization-linked">
               <Select
                 value={linkedAccountId}
                 onValueChange={setLinkedAccountId}
@@ -184,9 +161,9 @@ export const AuthorizationFormDialog = observer(
                   ))}
                 </SelectContent>
               </Select>
-            </FormField>
+            </AccountFormField>
 
-            <FormField label="状态" htmlFor="authorization-status">
+            <AccountFormField label="状态" htmlFor="authorization-status">
               <Select
                 value={status}
                 onValueChange={(value) => setStatus(value as AccountAuthorizationStatusType)}
@@ -200,9 +177,9 @@ export const AuthorizationFormDialog = observer(
                   <SelectItem value="revoked">已失效</SelectItem>
                 </SelectContent>
               </Select>
-            </FormField>
+            </AccountFormField>
 
-            <FormField label="授权日期" htmlFor="authorization-granted-at">
+            <AccountFormField label="授权日期" htmlFor="authorization-granted-at" hint="默认今天">
               <Input
                 id="authorization-granted-at"
                 type="date"
@@ -210,8 +187,7 @@ export const AuthorizationFormDialog = observer(
                 onChange={(event) => setGrantedAt(event.target.value)}
                 disabled={submitting}
               />
-              <p className="text-muted-foreground text-xs">默认今天</p>
-            </FormField>
+            </AccountFormField>
           </div>
 
           <div className="flex justify-end gap-2">

@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button.tsx';
 import { SidebarToggler } from '@/components/Sidebar/SidebarToggler.tsx';
 import { VaultStoreContext } from '@/store/storeContext.ts';
 import { VAULT_PASSWORD_INPUT_ID } from '@/components/Account/VaultUnlockForm.tsx';
-import { notifyAccountDialogPending } from '@/components/Account/accountMessages.ts';
 
 type VaultToolbarProps = {
   /**
@@ -13,6 +12,11 @@ type VaultToolbarProps = {
    * 工具栏本身不感知 react-table，锁定态也不渲染任何列表控制（PRD §5.3）。
    */
   listControls?: React.ReactNode;
+  /**
+   * 解锁态「添加账号」：打开账号弹窗（新建模式），由账号列表外壳提供。
+   * 锁定态不渲染该按钮，允许不传（AccountVault 的锁定形态即如此）。
+   */
+  onAdd?: () => void;
 };
 
 /**
@@ -22,14 +26,9 @@ type VaultToolbarProps = {
  * 锁定态：侧栏开关 + 「账号库已锁定」+ 解锁账号库（聚焦主密码输入框）——按 PRD §5.3
  * 「只保留」的枚举，不渲染添加账号等任何写操作 / 查看明文入口。
  */
-export const VaultToolbar = observer(({ listControls }: VaultToolbarProps) => {
+export const VaultToolbar = observer(({ listControls, onAdd }: VaultToolbarProps) => {
   const vault = React.useContext(VaultStoreContext);
   const locked = !vault.unlocked;
-
-  const handleAdd = () => {
-    // 只有解锁态才会渲染这个按钮，这里不再做锁定判断（PRD §5.3 锁定态枚举里没有它）
-    notifyAccountDialogPending();
-  };
 
   /** 解锁表单就在本页锁定态里渲染，这里只负责把焦点送到主密码输入框 */
   const focusUnlockForm = () => {
@@ -55,7 +54,8 @@ export const VaultToolbar = observer(({ listControls }: VaultToolbarProps) => {
           <span className="text-sm font-medium">账号库</span>
           {listControls}
           <div className="ml-auto flex items-center gap-1.5">
-            <Button variant="default" onClick={handleAdd}>
+            {/* 只有解锁态才会渲染这个按钮，这里不再做锁定判断（PRD §5.3 锁定态枚举里没有它） */}
+            <Button variant="default" onClick={onAdd}>
               <PlusIcon />
               <span className="hidden @xl/main:inline-block">添加账号</span>
             </Button>

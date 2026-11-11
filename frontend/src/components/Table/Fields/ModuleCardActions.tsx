@@ -18,7 +18,8 @@ import { DeleteDialog } from '@/components/Table/Controls/DeleteDialog.tsx';
 import { Spinner } from '@/components/ui/spinner.tsx';
 import { cn } from '@/lib/utils.ts';
 import { isAccountItem, isSkillItem } from '@/components/Table/Fields/moduleItem.ts';
-import { ACCOUNT_DELETE_HINT, notifyAccountDialogPending } from '@/components/Account/accountMessages.ts';
+import { ACCOUNT_DELETE_HINT } from '@/components/Account/accountMessages.ts';
+import { AccountDialogContext } from '@/components/Account/AccountDialog.tsx';
 
 const actionButtonClass =
   'onhover-visible text-muted-foreground bg-background hover:bg-accent hover:text-foreground flex h-8 shrink-0 items-center justify-center rounded-md border px-2 shadow-xs transition-colors';
@@ -46,6 +47,9 @@ export const ModuleCardActions = observer(({ module, item }: { module: ModuleKey
   const store = React.useContext(StoreContext);
   const openItem = useModuleItemOpen(module);
   const [pendingAction, setPendingAction] = React.useState<'check' | 'export' | null>(null);
+  // 账号编辑弹窗的打开入口由账号库列表页经 context 提供；书签 / Skill 页面没有该
+  // Provider（取到 null），那里的账号分支菜单本就不会渲染
+  const accountDialog = React.useContext(AccountDialogContext);
 
   const detailPath = MODULES[module].routes.detail;
   const isSkill = isSkillItem(item);
@@ -171,8 +175,8 @@ export const ModuleCardActions = observer(({ module, item }: { module: ModuleKey
             </>
           ) : isAccount ? (
             <>
-              {/* 编辑弹窗在 task12 接入；收藏是纯标记，更新后列表按原条件刷新 */}
-              <DropdownMenuItem onSelect={() => notifyAccountDialogPending()}>
+              {/* 编辑打开账号弹窗：列表数据不含密文，弹窗按账号 id 现场拉详情解密后回显 */}
+              <DropdownMenuItem onSelect={() => accountDialog?.openEdit(item.id)}>
                 <Pencil />
                 编辑
               </DropdownMenuItem>

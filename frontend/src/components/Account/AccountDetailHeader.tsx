@@ -86,7 +86,7 @@ export const AccountDetailHeader = ({
           <KeyRound />
           <span className="hidden sm:inline">复制密码</span>
         </Button>
-        {/* 编辑弹窗在 task12 接入，点击给统一占位提示（与列表操作菜单同一文案） */}
+        {/* 编辑打开账号弹窗（与列表操作菜单同一入口）：详情页已加载，弹窗直接复用 */}
         <Button variant="outline" size="sm" onClick={onEdit}>
           <Pencil />
           <span className="hidden sm:inline">编辑</span>

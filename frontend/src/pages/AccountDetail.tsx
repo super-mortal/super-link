@@ -11,7 +11,7 @@ import { AccountCredentials } from '@/components/Account/AccountCredentials.tsx'
 import { AccountNotesCard } from '@/components/Account/AccountNotesCard.tsx';
 import { AuthorizationList } from '@/components/Account/AuthorizationList.tsx';
 import { AccountInfoPanel } from '@/components/Account/AccountInfoPanel.tsx';
-import { notifyAccountDialogPending } from '@/components/Account/accountMessages.ts';
+import { AccountDialog } from '@/components/Account/AccountDialog.tsx';
 import { useAccountSecretDecrypt } from '@/hooks/useAccountSecretDecrypt.ts';
 import { StoreContext, VaultStoreContext } from '@/store/storeContext.ts';
 import Loading from '@/layouts/Loading.tsx';
@@ -39,6 +39,8 @@ export const AccountDetail = observer(() => {
 
   const [detail, setDetail] = useState<AccountDetailType | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
+  /** 编辑弹窗开关：详情页已持有数据，弹窗直接复用，保存后统一重拉详情 */
+  const [editOpen, setEditOpen] = useState(false);
 
   /** 拉取详情（元数据 + 密文 + 授权关系）；解密发生在组件内按需进行，store 只搬运密文 */
   const loadDetail = useCallback(async () => {
@@ -119,7 +121,7 @@ export const AccountDetail = observer(() => {
               account={detail}
               onCopyPassword={secretActions.copyPassword}
               onRefresh={loadDetail}
-              onEdit={notifyAccountDialogPending}
+              onEdit={() => setEditOpen(true)}
               onLock={() => vault.lock()}
               onDelete={handleDelete}
             />
@@ -141,6 +143,15 @@ export const AccountDetail = observer(() => {
               </div>
               <AccountInfoPanel account={detail} />
             </div>
+
+            {/* 编辑弹窗：复用已加载的详情（不重复请求），保存成功后重拉详情刷新头部与各区 */}
+            <AccountDialog
+              open={editOpen}
+              onOpenChange={setEditOpen}
+              accountId={detail.id}
+              initialDetail={detail}
+              onSaved={loadDetail}
+            />
           </div>
         )}
       </div>

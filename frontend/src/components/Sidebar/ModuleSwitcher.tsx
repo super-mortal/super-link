@@ -31,7 +31,7 @@ export const ModuleSwitcher = observer(() => {
   const { isMobile, toggleSidebar } = useSidebar();
   const { setTagFilter } = useItemListState();
 
-  // 账号库是独立路由，高亮按路径判断；书签 / Skill 仍看 store.module
+  // 账号库是独立路由：/accounts 列表页与 /accounts/:id 详情页都算账号库路由
   const isAccountsRoute = location.pathname.startsWith('/accounts');
 
   const moduleCounts: Record<ModuleKey, number> = {
@@ -63,7 +63,10 @@ export const ModuleSwitcher = observer(() => {
     }
   };
 
-  const isModuleActive = (key: ModuleKey) => (key === 'accounts' ? isAccountsRoute : store.module === key);
+  // 任意路由下只高亮一个模块：账号库是独立路由，/accounts 下按路径判定；其余路由按 store.module。
+  // 进入账号库只 navigate、不改 store.module，因此从账号库返回列表后原模块高亮自动恢复
+  const activeKey: ModuleKey = isAccountsRoute ? MODULES.accounts.key : store.module;
+  const isModuleActive = (key: ModuleKey) => key === activeKey;
   // 已初始化但锁定时在模块行标锁（PRD §5.1）；未初始化时不标——首次进入应看到「设置主密码」
   const showVaultLock = vault.initialized === true && !vault.unlocked;
 

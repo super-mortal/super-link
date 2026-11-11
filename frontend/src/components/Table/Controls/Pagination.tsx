@@ -45,17 +45,27 @@ export function Pagination<TData>({
           <Select
             value={table.getState().pagination.pageSize.toString()}
             onValueChange={(value) => {
-              const newPageSize = Number(value);
-              table.setPageSize(newPageSize);
+              // 切换每页条数必须回到第 1 页（PRD O-11）：TanStack 的 setPageSize 只保持当前
+              // 首行位置，缩小每页条数时会停在换算后的中间页。一次 setPagination 同时改
+              // pageSize 与 pageIndex，onPaginationChange 只触发一次，
+              // 避免 setUrlState 连写两次产生多余历史记录（page=1 与 per-page 同步，刷新不丢）
+              table.setPagination((old) => ({ ...old, pageIndex: 0, pageSize: Number(value) }));
             }}
           >
-            <SelectTrigger>
+            {/* 固定最小宽度 + 等宽数字：9 / 96 切换时按钮宽度不跳动（对齐原型 pag-size-btn） */}
+            <SelectTrigger className="min-w-19 tabular-nums">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent side="top">
-              {/* 每页条数选项三模块共用（PRD §9.4）：3 的倍数，默认 24 */}
+            {/* 菜单向上展开（分页位于页面底部）；Radix Portal 渲染，不会被内容区裁剪 */}
+            <SelectContent side="top" className="min-w-24">
+              {/* 每页条数选项三模块共用（PRD §9.4）：3 的倍数，默认 24；当前项常驻高亮加粗，
+                  勾选标记由 SelectItem 的 ItemIndicator 渲染 */}
               {[9, 24, 48, 96].map((pageSize) => (
-                <SelectItem key={pageSize} value={`${pageSize}`}>
+                <SelectItem
+                  key={pageSize}
+                  value={`${pageSize}`}
+                  className="data-[state=checked]:bg-accent data-[state=checked]:font-medium"
+                >
                   {pageSize}
                 </SelectItem>
               ))}

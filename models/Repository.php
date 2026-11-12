@@ -1429,6 +1429,11 @@ class Repository
 				return false;
 			}
 
+			// 设置表（PRD O-5）：与 migrate() 共用同一建表方法，新旧库一致
+			if (!$this->setupAppSettingsTable()) {
+				return false;
+			}
+
 			return true;
 		} catch (Exception $e) {
 			return false;
@@ -1447,6 +1452,11 @@ class Repository
 
 		if (!$this->checkSkillsTagsTableExists() && !$this->setupSkillsTagsTable()) {
 			throw new Exception('Failed to set up skills_tags table');
+		}
+
+		// 设置表（PRD O-5）：老库在这里补齐，与 setupDatabase() 保持幂等一致
+		if (!$this->checkAppSettingsTableExists() && !$this->setupAppSettingsTable()) {
+			throw new Exception('Failed to set up app_settings table');
 		}
 
 		if (!$this->checkVaultMetaTableExists() && !$this->setupVaultMetaTable()) {
@@ -1608,6 +1618,86 @@ class Repository
 		} catch (Exception $e) {
 			return false;
 		}
+	}
+
+	/**
+	 * Check if app_settings table exists
+	 *
+	 * @return bool
+	 */
+	public function checkAppSettingsTableExists()
+	{
+		try {
+			$stmt = $this->pdo->query("SELECT name FROM sqlite_master WHERE type='table' AND name='app_settings'");
+			return $stmt->fetch() !== false;
+		} catch (Exception $e) {
+			return false;
+		}
+	}
+
+	/**
+	 * 创建 app_settings 表（PRD O-5）
+	 *
+	 * key/value 结构，存放「设置 → 网络」的 GitHub 访问配置；
+	 * 环境变量只作为初始默认值，UI 保存后以本表为准。
+	 * CREATE TABLE IF NOT EXISTS 让 migrate() 可以重复执行而不报错。
+	 */
+	public function setupAppSettingsTable()
+	{
+		try {
+			$this->pdo->exec('CREATE TABLE IF NOT EXISTS app_settings (
+				key TEXT NOT NULL PRIMARY KEY,
+				value TEXT NOT NULL,
+				updated_at TEXT DEFAULT(NULL)
+			)');
+			return true;
+		} catch (Exception $e) {
+			return false;
+		}
+	}
+
+	/**
+	 * 读取全部设置为 key => value
+	 *
+	 * 表不存在（未迁移的老库）时抛 PDOException，由调用方决定回落策略；
+	 * Config 读取端会捕获并回落到环境变量默认值。
+	 */
+	public function getAppSettings(): array
+	{
+		$stmt = $this->pdo->query('SELECT key, value FROM app_settings');
+
+		$settings = [];
+		foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+			$settings[(string)$row['key']] = (string)$row['value'];
+		}
+
+		return $settings;
+	}
+
+	public function getAppSetting(string $key): ?string
+	{
+		$stmt = $this->pdo->prepare('SELECT value FROM app_settings WHERE key = :key');
+		$stmt->execute([':key' => $key]);
+		$value = $stmt->fetchColumn();
+
+		return $value === false ? null : (string)$value;
+	}
+
+	/**
+	 * 写入单条设置（upsert）
+	 *
+	 * app_settings 没有被其他表引用，INSERT OR REPLACE 的删除重建语义在这里是安全的。
+	 */
+	public function setAppSetting(string $key, string $value): bool
+	{
+		$stmt = $this->pdo->prepare('INSERT OR REPLACE INTO app_settings (key, value, updated_at)
+			VALUES (:key, :value, :updated_at)');
+
+		return $stmt->execute([
+			':key' => $key,
+			':value' => $value,
+			':updated_at' => date('Y-m-d H:i:s'),
+		]);
 	}
 
 	/**

@@ -325,3 +325,24 @@ export type VaultBackupType = {
  * - replace：覆盖。清空现有账号与授权后按备份原样恢复，vault_meta 也以备份为准。
  */
 export type VaultImportModeType = 'merge' | 'replace';
+
+/** GitHub 网络访问三档策略（PRD O-5，与后端 Config::GITHUB_ACCESS_MODES 一致） */
+export type GithubAccessModeType = 'auto' | 'proxy' | 'direct';
+
+/** 设置 → 网络：GET 返回 / POST 保存的配置结构（数据库设置优先，环境变量仅初始默认值） */
+export type NetworkSettingsType = {
+  mode: GithubAccessModeType;
+  /** 代理前缀，如 https://gh-proxy.com/；空串表示未配置 */
+  proxy_prefix: string;
+  /** 是否启用应用版本检查（关闭后不再请求 api.github.com） */
+  update_check: boolean;
+};
+
+/** 测试连接结果：只做 HEAD 探测，不可达时也返回 200 + reachable=false */
+export type NetworkTestResultType = {
+  reachable: boolean;
+  /** 实际探测的目标（走代理时含代理前缀） */
+  target: string;
+  elapsed_ms: number;
+  error: string | null;
+};

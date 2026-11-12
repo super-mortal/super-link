@@ -180,6 +180,7 @@ export const InstallSkillDialog = observer(() => {
                 支持仓库根目录、<span className="font-mono">skills/</span> 子目录或任意下一级目录中的 SKILL.md
               </HintLine>
               <HintLine>安装后保留 .git，可随时检测上游更新并按指纹还原版本</HintLine>
+              <HintLine>境内服务器连接 GitHub 失败时，可在「设置 → 网络」配置代理，或改用上传压缩包</HintLine>
               <HintLine>
                 也可粘贴子目录链接，如 <span className="font-mono">github.com/owner/repo/tree/main/skills/xxx</span>
               </HintLine>

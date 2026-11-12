@@ -105,6 +105,29 @@ echo "WATCHTOWER_TOKEN=$(openssl rand -base64 24)" >> .env
 docker compose up -d
 ```
 
+## GitHub 网络访问（境内服务器）
+
+Skill 安装、检查更新与应用版本检查都依赖 GitHub。境内服务器直连 GitHub 可能超时或失败，可在**设置 → 网络**按三档策略调整：
+
+| 策略 | 行为 |
+| --- | --- |
+| 自动（推荐） | 优先直连，10 秒内失败后再尝试代理 |
+| 始终使用代理 | 所有 GitHub 请求都经代理访问 |
+| 不使用代理 | 只直连 github.com，不使用代理 |
+
+- **代理地址**：路径前缀格式，例如 `https://gh-proxy.com/`；仅支持 `https://`，且只作用于 `github.com` / `codeload.github.com`，不影响书签、账号库等其他网络请求
+- **测试连接**：只对目标发起 HEAD 探测，返回可达性与耗时，不会真正下载仓库
+- **版本检查**：关闭后不再请求 `api.github.com`，关于页只显示本地版本
+- 策略保存后写入数据库；环境变量仅作为初始默认值（`.env`）：
+
+```bash
+GITHUB_ACCESS_MODE=auto        # auto / proxy / direct
+GITHUB_PROXY_PREFIX=https://你的代理域名/
+APP_UPDATE_CHECK=true          # 设为 false 后关于页不再请求 GitHub
+```
+
+> 第三方公共代理只做 URL 前缀转发，可用性与隐私不受控，长期使用建议自建代理。
+
 ## 目录结构（核心）
 
 - `controllers/`：后端控制器

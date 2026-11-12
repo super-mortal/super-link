@@ -23,6 +23,9 @@ use Controllers\ItemsGetController;
 use Controllers\ItemsTagsUpdateController;
 use Controllers\ItemsUpdateController;
 use Controllers\SetupDatabaseController;
+use Controllers\SettingsNetworkGetController;
+use Controllers\SettingsNetworkTestController;
+use Controllers\SettingsNetworkUpdateController;
 use Controllers\SkillsCheckUpdatesController;
 use Controllers\SkillsDeleteController;
 use Controllers\SkillsDetailController;
@@ -125,6 +128,15 @@ return [
 			],
 			'password' => [
 				'PATCH' => UserPasswordUpdateController::class,
+			],
+			// GitHub 网络访问三档设置（PRD O-5）：设置页「网络」分区，
+			// 保存进 app_settings 表；测试连接只做 HEAD 探测
+			'network' => [
+				'GET' => SettingsNetworkGetController::class,
+				'POST' => SettingsNetworkUpdateController::class,
+				'test' => [
+					'POST' => SettingsNetworkTestController::class,
+				],
 			],
 		],
 		'auth' => [

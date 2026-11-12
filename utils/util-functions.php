@@ -2,6 +2,7 @@
 
 namespace Utils;
 
+use Config;
 use Exception;
 use Framework\Exceptions\ValidationException;
 use Framework\ServiceContainer;
@@ -233,6 +234,12 @@ function getInstalledAppInfo(): ?array
 
 function getAppUpdateInfo(): ?array
 {
+	// O-5：关闭版本检查后不再请求 api.github.com，缓存也不读——关于页只显示本地版本。
+	// 放在缓存判断之前，否则关掉开关后仍会展示上一次缓存的版本信息
+	if (!Config::isAppUpdateCheckEnabled()) {
+		return null;
+	}
+
 	try {
 		// Check cache first
 		$cache_file_path = sys_get_temp_dir() . '/app-update-info-cache.json';

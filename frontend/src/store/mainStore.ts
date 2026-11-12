@@ -10,9 +10,12 @@ import {
   AccountAuthorizationType,
   AccountInputType,
   CreateUserType,
+  GithubAccessModeType,
   ItemType,
   LoginType,
   ModuleKey,
+  NetworkSettingsType,
+  NetworkTestResultType,
   SkillDetailType,
   SkillType,
   SkillUpdateType,
@@ -68,6 +71,11 @@ class MainStore {
       html_url: string | null;
     } | null;
   } | null = null;
+  /**
+   * 「设置 → 网络」的 GitHub 访问配置（O-5）：三档策略 + 代理前缀 + 版本检查开关。
+   * 打开设置对话框时拉取，保存后以响应刷新；null 表示尚未加载。
+   */
+  networkSettings: NetworkSettingsType | null = null;
 
   /* ----------------------------- 账号库（PRD §5.1.1 模块隔离） ----------------------------- */
   /**
@@ -1082,6 +1090,43 @@ class MainStore {
 
   updateApp = async () => {
     return this.runRequest(API_ENDPOINTS.updateApp, 'POST', {}, '触发更新失败');
+  };
+
+  /** O-5：拉取「设置 → 网络」配置。生效值由后端给出（数据库设置优先，环境变量仅初始默认值） */
+  fetchNetworkSettings = async () => {
+    const response = await this.runRequest(API_ENDPOINTS.settings.network, 'GET', {}, '获取网络设置失败', true, true);
+
+    if (response === null || !response.data) {
+      return;
+    }
+
+    this.networkSettings = response.data;
+  };
+
+  /** O-5：保存三档策略 / 代理前缀 / 版本检查开关，成功 toast 由 runRequest 统一弹出 */
+  saveNetworkSettings = async (values: NetworkSettingsType): Promise<boolean> => {
+    const response = await this.runRequest(API_ENDPOINTS.settings.network, 'POST', values, '保存网络设置失败');
+
+    if (response === null) {
+      return false;
+    }
+
+    this.networkSettings = response.data ?? { ...values };
+    return true;
+  };
+
+  /**
+   * O-5：测试连接（HEAD 探测）。不可达时后端同样返回 200 + reachable=false，
+   * 由调用方展示结果；只有参数校验失败才走 runRequest 的错误 toast。
+   */
+  testNetworkConnection = async (values: { mode: GithubAccessModeType; proxy_prefix: string }) => {
+    const response = await this.runRequest(API_ENDPOINTS.settings.networkTest, 'POST', values, '测试连接失败', true);
+
+    if (response === null || !response.data) {
+      return null;
+    }
+
+    return response.data as NetworkTestResultType;
   };
 }
 

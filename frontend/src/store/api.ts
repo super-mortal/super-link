@@ -15,6 +15,10 @@ export const API_ENDPOINTS = {
     userName: `${API_BASE}/settings/username`,
     password: `${API_BASE}/settings/password`,
     delete: `${API_BASE}/settings/user`,
+    /** O-5：GitHub 网络访问三档设置（设置页「网络」分区） */
+    network: `${API_BASE}/settings/network`,
+    /** 测试连接：只做 HEAD 探测，不执行真实 clone */
+    networkTest: `${API_BASE}/settings/network/test`,
   },
   tags: {
     // 标签按模块隔离（PRD O-9）：拉取必须带 module（bookmarks / skills），

@@ -67,7 +67,7 @@ composer install --no-dev --optimize-autoloader   # 运行时依赖：guzzlehttp
 - 后端**没有测试框架、没有 test 脚本**。
 - 本地验证需要 Apache + mod_rewrite 的等价环境（`/api`、`/content` 转发到 `public/api/index.php`）。
   直接用 `php -S` 时，需自备 router 注入 `$_SERVER['SCRIPT_URL']`（Apache 才提供该变量），否则路由匹配会失败。
-- 可用环境变量：`DB_NAME`（默认 `link_navigator`）。
+- 可用环境变量：`DB_NAME`（默认 `link_navigator`）；`GITHUB_ACCESS_MODE`（`auto`/`proxy`/`direct`，默认 `auto`）、`GITHUB_PROXY_PREFIX`（代理前缀，默认空）、`APP_UPDATE_CHECK`（默认 `true`）——后三者仅作为初始默认值，设置页保存后以数据库为准（PRD O-5）。
 
 ## 本地开发环境
 
@@ -115,6 +115,7 @@ composer install --no-dev --optimize-autoloader   # 运行时依赖：guzzlehttp
   - Authentication：`users` 表非空即启用认证，未登录返回 401；`AuthLoginController` 与 `AppInfoController` 跳过（后者供登录页展示版本号，只含公开版本信息，PRD O-6）；数据库未初始化时跳过。
   - 会话：cookie 名 `link-navigator-session`，有效期 7 天。
 - 数据层：`models/Repository.php`（SQLite PDO 查询）、`ItemCreator.php`、`TagCreator.php`。
+- **GitHub 网络访问三档设置（PRD O-5）**：`app_settings` 表（key/value）存 `github_access_mode`（auto/proxy/direct）、`github_proxy_prefix`、`app_update_check`；读取走 `Config::getGithubAccessMode()` / `Config::getGithubProxyPrefix()` / `Config::isAppUpdateCheckEnabled()`（数据库优先，环境变量仅初始默认值，非法值 error_log 后回退直连）。接口 `GET/POST /api/settings/network`、`POST /api/settings/network/test`（只做 HEAD 探测）。`GitHelper` 的 clone/fetch 按档位执行：direct 直连、proxy 始终加 `git -c url.<前缀>.insteadOf=...`、auto 先短超时（10s）直连失败再走代理；代理只改写 `github.com` / `codeload.github.com` 两类原始地址，`.git/config` 与 `source_url` 始终是原始地址。
 - **数据库迁移**：`DatabaseMigrations` 中间件每次请求调用 `Repository::migrate()`，做幂等的建表/建索引/删除旧列（如 `items.image`）。改表结构时：新库走 `setupDatabase()`，老库在 `migrate()` 里补增量逻辑，必须可重复执行并兼容已有数据库。
 - **标签按模块隔离**（PRD O-9）：`tags` 表有 `module` 列（`bookmarks` / `skills`，默认 `bookmarks`），唯一索引为 `(module, title, parent)`（`idx_tags_module_title_parent`，取代旧 `idx_tags_title_parent`）；标签接口按模块过滤，账号库不接入 `tags`。
 - 错误码：**仅 Skill 相关接口与 `utils/Skill*`、`GitHelper` 使用 `[SL-XXX-NNNN]` 形式的错误码**（如 `SL-SKL-0005`、`SL-SEC-0003`）；其他接口返回普通中英文 message。JSON 请求异常统一返回 `{ success: false, message, error }`，HTTP 状态码取自异常 code。

@@ -3,6 +3,8 @@ name: 构建并发布 Docker 镜像
 # 触发方式：推送 v 开头的标签（如 v0.0.1、v1.2.3）时自动构建镜像、发布到 GHCR 并创建 GitHub Release
 # 发布地址：ghcr.io/super-mortal/super-link
 # 也可在 Actions 页面手动点 "Run workflow" 触发（用于验证流水线，手动触发不创建 Release）
+# Release 说明：优先使用 docs/releases/<tag>.md（四段式中文发布说明，应用内「查看更新内容」展示该 body）；
+# 文件不存在时 action 只警告并回退，由 generate_release_notes 自动生成说明，不会导致发布失败
 on:
   push:
     tags:
@@ -59,4 +61,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
+          # 优先用 docs/releases/<tag>.md 作为发布说明（body 会前插到自动生成说明之前）；
+          # 该文件缺失时 action 打警告并回退，最终 body 为自动生成的 changelog，不会失败
+          body_path: docs/releases/${{ github.ref_name }}.md
           generate_release_notes: true

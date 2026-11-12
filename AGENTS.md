@@ -13,6 +13,16 @@ super-link 是自托管的个人数据管理工具，从书签管理起步，通
 - 数据库：SQLite（默认 `storage/link_navigator.db`）
 - 文档：产品需求文档放在 `docs/prd/`；账号库见 [docs/prd/account-vault.md](docs/prd/account-vault.md)，优化项见 [docs/prd/optimization.md](docs/prd/optimization.md)；本地 HTML 高保真交互原型在 `mockups/`（不随仓库提交）
 
+## 版本发布记录
+
+| 版本 | 发布日期 | 说明 |
+| --- | --- | --- |
+| v0.0.6 | 2026-11-12 | 侧栏高亮 / 底部黑边 / 卡片遮挡修复；更新日志、GitHub 三档网络设置、登录页介绍；标签按模块隔离（含数据库迁移）、筛选横幅移除、卡片槽位、侧栏动效 |
+| v0.0.5 | 2026-11-10 | 账号库（加密账号 / 分组 / 平台 / TOTP）、设置页账号库分区与加密导出导入 |
+
+- 当前版本号写在根目录 `app-info.json` 的 `version` 字段；`GET /api/app-info` 与登录页 / 设置页的版本号都取自此文件，**发版时必须同步更新**。
+- 发布流程：整理版本号与四段式发布说明 → 用户过目确认 → 更新 `app-info.json` 并提交 → 打 `vX.Y.Z` tag 并推送 → 创建 GitHub Release（`body` 即发布说明，应用内「查看更新内容」弹窗展示）。未经用户确认不得执行后四步。
+
 ## 协作与发布流程
 
 ### 产品阶段：原型 + PRD 先行

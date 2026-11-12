@@ -70,12 +70,20 @@ export const CardsLayout = ({ rows, module, visibleFields }: ModuleLayoutProps) 
             </div>
 
             {/* O-8：左上多选框（hover 或勾选时常显）右缘距卡片内容仅约 8px，标题首字符会被遮挡；
-                标题行容器整体右移 12px（pl-3）留出约 4px 净空、下移 2px（pt-0.5）与多选框视觉找齐（PRD 实测 pl-2 净空为 0px） */}
-            <div className="flex min-w-0 flex-col gap-1 pt-0.5 pl-3">
-              <div className="flex flex-wrap items-center gap-1.5 pr-20">
-                <h4 className="min-w-0 truncate font-semibold tracking-tight">{moduleConfig.titleOf(item)}</h4>
-                {skill && <SourceBadge sourceType={item.source_type} />}
-                {skill && item.hasUpdate && <UpdateBadge />}
+                标题行容器整体右移 12px（pl-3）留出约 4px 净空、下移 2px（pt-0.5）与多选框视觉找齐（PRD 实测 pl-2 净空为 0px）。
+                 O-13：标题 + 来源区固定 3rem 槽位（min-h-12），无链接也占位；标题行不换行（flex-nowrap）：
+                标题可压缩省略（flex: 0 1 auto + min-width: 0），来源 / 更新徽章不参与压缩（shrink-0）固定同行右侧 */}
+            <div className="flex min-h-12 min-w-0 flex-col gap-1 pt-0.5 pl-3">
+              <div className="flex flex-nowrap items-center gap-1.5 pr-20">
+                <h4 className="min-w-0 flex-[0_1_auto] truncate font-semibold tracking-tight">
+                  {moduleConfig.titleOf(item)}
+                </h4>
+                {skill && (
+                  <span className="flex shrink-0 items-center gap-1.5">
+                    <SourceBadge sourceType={item.source_type} />
+                    {item.hasUpdate && <UpdateBadge />}
+                  </span>
+                )}
               </div>
               {showLink &&
                 (skill ? (
@@ -92,7 +100,8 @@ export const CardsLayout = ({ rows, module, visibleFields }: ModuleLayoutProps) 
                 ))}
             </div>
 
-            {/* 无描述也占位，保证多张卡片纵向对齐；字段被隐藏时整块不渲染 */}
+            {/* O-13：描述区固定 3rem 槽位（min-h-12），字段可见但无描述时保留空槽，保证多张卡片纵向对齐；
+                用户主动隐藏 description 字段时整块不渲染、槽位收缩 */}
             {showDescription && !account && (
               <div className="min-h-12">
                 {item.description ? (
@@ -103,6 +112,8 @@ export const CardsLayout = ({ rows, module, visibleFields }: ModuleLayoutProps) 
               </div>
             )}
 
+            {/* O-13：标签区固定 1.625rem 槽位（min-h-[26px]），无标签保留空槽、主动隐藏字段时槽位收缩；
+                标签超过一行时允许撑高，底部由 mt-auto 继续贴底 */}
             {showTags && (
               <div className="flex min-h-[26px] flex-wrap items-center gap-1">
                 {tagIDs.map((tagID) => (
@@ -113,8 +124,10 @@ export const CardsLayout = ({ rows, module, visibleFields }: ModuleLayoutProps) 
               </div>
             )}
 
+            {/* O-13：底部署名区固定 1.75rem 槽位（min-h-7）并 mt-auto 贴卡片底部；
+                组成字段（安装时间 / 指纹 / 创建时间）全部隐藏时整槽不渲染 */}
             {(footerLeft || footerRight) && (
-              <div className="text-muted-foreground mt-auto flex items-center justify-between gap-3 border-t pt-2 text-[11px]">
+              <div className="text-muted-foreground mt-auto flex min-h-7 items-center justify-between gap-3 border-t pt-2 text-[11px]">
                 {footerLeft ? (
                   <span className={cn('min-w-0 truncate', skill && 'font-mono')} title={footerLeft}>
                     {footerLeft}

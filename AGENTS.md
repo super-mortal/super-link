@@ -116,6 +116,7 @@ composer install --no-dev --optimize-autoloader   # 运行时依赖：guzzlehttp
   - 会话：cookie 名 `link-navigator-session`，有效期 7 天。
 - 数据层：`models/Repository.php`（SQLite PDO 查询）、`ItemCreator.php`、`TagCreator.php`。
 - **数据库迁移**：`DatabaseMigrations` 中间件每次请求调用 `Repository::migrate()`，做幂等的建表/建索引/删除旧列（如 `items.image`）。改表结构时：新库走 `setupDatabase()`，老库在 `migrate()` 里补增量逻辑，必须可重复执行并兼容已有数据库。
+- **标签按模块隔离**（PRD O-9）：`tags` 表有 `module` 列（`bookmarks` / `skills`，默认 `bookmarks`），唯一索引为 `(module, title, parent)`（`idx_tags_module_title_parent`，取代旧 `idx_tags_title_parent`）；标签接口按模块过滤，账号库不接入 `tags`。
 - 错误码：**仅 Skill 相关接口与 `utils/Skill*`、`GitHelper` 使用 `[SL-XXX-NNNN]` 形式的错误码**（如 `SL-SKL-0005`、`SL-SEC-0003`）；其他接口返回普通中英文 message。JSON 请求异常统一返回 `{ success: false, message, error }`，HTTP 状态码取自异常 code。
 - Skill 文件：安装在 `storage/skills/`，GitHub 来源保留 `.git` 用于检查更新；上传仅 `.zip`，同名覆盖。
 - `views/` 仅保留服务端错误页：`views/layouts/primary.php`、`views/pages/error.php`；正常 UI 100% 在前端。

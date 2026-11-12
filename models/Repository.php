@@ -1342,6 +1342,8 @@ class Repository
 			)');
 
 			// Create tags table
+			// module 列实现标签按模块隔离（PRD O-9）：bookmarks / skills 各自独立，
+			// 账号库不接入本表；唯一索引随之改为 (module, title, parent)
 			$this->pdo->exec('CREATE TABLE IF NOT EXISTS tags (
 				id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
 			   title TEXT NOT NULL,
@@ -1349,9 +1351,15 @@ class Repository
 			   color TEXT NOT NULL,
 			   parent INTEGER NOT NULL DEFAULT(0),
 			   pinned INTEGER NOT NULL DEFAULT(0),
+			   module TEXT NOT NULL DEFAULT(\'bookmarks\'),
 			   created_at TEXT DEFAULT(NULL),
 			   updated_at TEXT DEFAULT(NULL)
 			)');
+
+			// 标签模块隔离唯一索引（PRD O-9）：与 migrate() 共用同一建索引方法，新旧库一致
+			if (!$this->createTagModuleIndex()) {
+				return false;
+			}
 
 			// Create items_tags relationship table
 			$this->pdo->exec('CREATE TABLE IF NOT EXISTS items_tags (
@@ -1433,8 +1441,9 @@ class Repository
 			throw new Exception('Failed to seed account groups');
 		}
 
-		if (!$this->checkTagIndexExists() && !$this->createTagIndex()) {
-			throw new Exception('Failed to create index on tags');
+		// 标签模块隔离（PRD O-9）：补 module 列、迁移历史数据、更换唯一索引，每一步都幂等
+		if (!$this->migrateTagsModule()) {
+			throw new Exception('Failed to migrate tags module');
 		}
 
 		// Drop the legacy image column if it still exists (image feature removed)
@@ -1609,11 +1618,204 @@ class Repository
 		}
 	}
 
-	public function checkTagIndexExists()
+	/**
+	 * tags.module 列是否存在（老库判断用）
+	 *
+	 * 与 checkItemsImageColumnExists() 同一套路：直接查列，查不出来即视为无此列。
+	 */
+	public function checkTagsModuleColumnExists(): bool
 	{
-		$stmt = $this->pdo->query("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'idx_tags_title_parent' AND tbl_name = 'tags';");
-		return (bool)$stmt->fetchColumn();
+		try {
+			$stmt = $this->pdo->query('SELECT module FROM tags LIMIT 1');
+			return true;
+		} catch (Exception $e) {
+			return false;
+		}
+	}
 
+	/**
+	 * 补 tags.module 列（PRD O-9 方案 A）
+	 *
+	 * SQLite 的 ALTER TABLE ADD COLUMN 允许 NOT NULL，但必须给非空默认值，
+	 * 已有历史行会全部落到 'bookmarks'——这正是迁移要求：书签侧标签保持原样，
+	 * 只有被 Skill 引用的标签才另复制 skills 副本（见 migrateSkillsTagsOwnership）。
+	 */
+	public function addTagsModuleColumn(): bool
+	{
+		try {
+			$this->pdo->exec("ALTER TABLE tags ADD COLUMN module TEXT NOT NULL DEFAULT('bookmarks')");
+			return true;
+		} catch (Exception $e) {
+			return false;
+		}
+	}
+
+	/**
+	 * 删除旧唯一索引 idx_tags_title_parent（O-9 迁移）
+	 *
+	 * 必须在数据迁移之前删：skills 副本与原书签标签同名同父，旧索引
+	 * (title, parent) 不区分模块，会直接拦截副本的 INSERT。
+	 */
+	public function dropLegacyTagIndex(): bool
+	{
+		try {
+			$this->pdo->exec('DROP INDEX IF EXISTS "idx_tags_title_parent"');
+			return true;
+		} catch (Exception $e) {
+			return false;
+		}
+	}
+
+	/**
+	 * 标签模块隔离迁移总编排（PRD O-9 方案 A，每一步幂等、可重复执行）：
+	 *   1. 补 module 列，历史标签默认 bookmarks；
+	 *   2. 删旧唯一索引 (title, parent)——先于数据迁移，否则副本插入会被拦截；
+	 *   3. 数据迁移：被 Skill 引用的标签复制为 skills 副本，skills_tags 改指副本；
+	 *   4. 建新唯一索引 (module, title, parent)。
+	 */
+	public function migrateTagsModule(): bool
+	{
+		try {
+			if (!$this->checkTagsModuleColumnExists() && !$this->addTagsModuleColumn()) {
+				return false;
+			}
+
+			if (!$this->dropLegacyTagIndex()) {
+				return false;
+			}
+
+			if (!$this->migrateSkillsTagsOwnership()) {
+				return false;
+			}
+
+			return $this->createTagModuleIndex();
+		} catch (Exception $e) {
+			return false;
+		}
+	}
+
+	/**
+	 * 数据迁移：被 Skill 引用的标签复制为 skills 模块副本，skills_tags 改指副本（PRD O-9）
+	 *
+	 * 为什么复制而不是把原行 module 改成 skills：原标签同时被书签物品引用
+	 * （items_tags），改原行等于把书签侧标签一起搬走，书签侧栏直接丢标签。
+	 * 复制后书签侧原样不动，Skill 侧拿到结构等价的副本，两边行为都不变。
+	 *
+	 * parent 是树结构（指向另一个标签 id，0 为根）：只复制被引用的行时，副本的
+	 * parent 仍指向 bookmarks 模块的原标签，Skill 侧栏的父子层级会断，将来书签侧
+	 * 删除 / 改名该父标签还会形成悬空引用。所以父级链一起复制，副本的 parent
+	 * 重指向父级副本，整棵子树在 skills 模块内自洽。
+	 *
+	 * 幂等：按 (module='skills', title, 重指向后的 parent) 查找复用，重复执行时
+	 * skills_tags 已指向副本、查找命中副本自身，不会重复复制；整体包在事务里，
+	 * 中途失败整体回滚，不会留下「一半关联已改写」的中间态。
+	 */
+	public function migrateSkillsTagsOwnership(): bool
+	{
+		$this->pdo->beginTransaction();
+		try {
+			$stmt = $this->pdo->query('SELECT DISTINCT tag_id FROM skills_tags');
+			$referenced_tag_ids = array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+
+			if (!empty($referenced_tag_ids)) {
+				/** @var array<int, int> 原标签 id → skills 侧 id */
+				$id_map = [];
+				$resolving = [];
+				foreach ($referenced_tag_ids as $tag_id) {
+					$this->resolveSkillsTagId($tag_id, $id_map, $resolving);
+				}
+
+				$update = $this->pdo->prepare('UPDATE skills_tags SET tag_id = :new_tag_id WHERE tag_id = :old_tag_id');
+				foreach ($id_map as $old_id => $new_id) {
+					// 恒等映射（重复执行迁移时的常态）：无需改写
+					if ($old_id === $new_id) {
+						continue;
+					}
+					$update->execute([':new_tag_id' => $new_id, ':old_tag_id' => $old_id]);
+				}
+			}
+
+			$this->pdo->commit();
+			return true;
+		} catch (Exception $e) {
+			if ($this->pdo->inTransaction()) {
+				$this->pdo->rollBack();
+			}
+			return false;
+		}
+	}
+
+	/**
+	 * 确保某个标签在 skills 模块有对应行，返回 skills 侧标签 id（O-9 迁移）
+	 *
+	 * $id_map 记录「原标签 id → skills 侧 id」，父级链递归与多个 Skill 共用，
+	 * 保证同一原标签只复制一份；$resolving 记录递归路径上的节点，用于打断
+	 * parent 环（历史脏数据），环上节点按根级处理，避免无限递归。
+	 */
+	private function resolveSkillsTagId(int $tag_id, array &$id_map, array &$resolving): int
+	{
+		if (isset($id_map[$tag_id])) {
+			return $id_map[$tag_id];
+		}
+
+		$stmt = $this->pdo->prepare('SELECT title, description, color, parent, pinned, created_at, updated_at FROM tags WHERE id = :id');
+		$stmt->execute([':id' => $tag_id]);
+		$tag = $stmt->fetch(PDO::FETCH_ASSOC);
+
+		if (!$tag) {
+			// skills_tags 引用了不存在的标签（历史脏数据）：无行可复制，保持原引用
+			return $tag_id;
+		}
+
+		if (isset($resolving[$tag_id])) {
+			// parent 成环：按根级处理，打断递归
+			$id_map[$tag_id] = 0;
+			return 0;
+		}
+		$resolving[$tag_id] = true;
+
+		$parent_id = (int)$tag['parent'];
+		$skills_parent = 0;
+		if ($parent_id > 0) {
+			// 父级链一起复制，副本的 parent 重指向父级副本，保住 Skill 侧栏的树形层级
+			$skills_parent = $this->resolveSkillsTagId($parent_id, $id_map, $resolving);
+		}
+
+		// 查找语义与唯一索引 (module, title, parent) 严格一致：title 大小写不敏感，
+		// 命中则复用（幂等的关键），未命中才复制
+		$stmt = $this->pdo->prepare(
+			"SELECT id FROM tags
+			WHERE module = 'skills' AND title = :title COLLATE NOCASE AND parent = :parent"
+		);
+		$stmt->execute([':title' => $tag['title'], ':parent' => $skills_parent]);
+		$existing_id = $stmt->fetchColumn();
+
+		if (false !== $existing_id) {
+			$id_map[$tag_id] = (int)$existing_id;
+			unset($resolving[$tag_id]);
+			return (int)$existing_id;
+		}
+
+		// 复制：模块属性与展示属性原样搬运，时间戳保留历史值（迁移不伪造数据），
+		// parent 指向父级副本；新 id 由自增分配，不会与任何原标签 id 冲突
+		$insert = $this->pdo->prepare(
+			"INSERT INTO tags (title, description, color, parent, pinned, module, created_at, updated_at)
+			VALUES (:title, :description, :color, :parent, :pinned, 'skills', :created_at, :updated_at)"
+		);
+		$insert->execute([
+			':title' => $tag['title'],
+			':description' => $tag['description'],
+			':color' => $tag['color'],
+			':parent' => $skills_parent,
+			':pinned' => (int)$tag['pinned'],
+			':created_at' => $tag['created_at'],
+			':updated_at' => $tag['updated_at'],
+		]);
+		$new_id = (int)$this->pdo->lastInsertId();
+		$id_map[$tag_id] = $new_id;
+		unset($resolving[$tag_id]);
+
+		return $new_id;
 	}
 
 	/**
@@ -1795,10 +1997,19 @@ class Repository
 		}
 	}
 
-	public function createTagIndex()
+	/**
+	 * 创建标签模块隔离唯一索引 (module, title, parent)（PRD O-9）
+	 *
+	 * 替代旧索引 idx_tags_title_parent（仅 title, parent）：模块隔离后同一标题
+	 * 在 bookmarks 与 skills 各可存在一份，唯一性按模块内生效。
+	 * title 沿用历史语义 COLLATE NOCASE（同名标签大小写不敏感），parent 是整数 id
+	 * 用 BINARY 精确比较。IF NOT EXISTS 让 setupDatabase() 与 migrate() 都能
+	 * 重复执行；老库的旧索引由 dropLegacyTagIndex() 负责删除。
+	 */
+	public function createTagModuleIndex()
 	{
 		try {
-			$this->pdo->exec('CREATE UNIQUE INDEX "idx_tags_title_parent" ON tags(title COLLATE NOCASE ASC, parent COLLATE BINARY ASC);');
+			$this->pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS "idx_tags_module_title_parent" ON tags(module COLLATE BINARY ASC, title COLLATE NOCASE ASC, parent COLLATE BINARY ASC);');
 			return true;
 		} catch (Exception $e) {
 			return false;

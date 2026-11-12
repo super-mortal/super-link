@@ -213,6 +213,26 @@ a:hover {
   .created_at-container + .updated_at-container {
     @apply -mt-1;
   }
+
+  /* O-3 桌面端侧栏折叠/展开动效（PRD optimization.md §O-3）：
+     react-resizable-panels 以内联 flex-grow 表达面板宽度（flex-basis 为 0），过渡该属性
+     即得到宽度动画。Panel 的 className 落在内层 wrapper（其 flex-grow 恒为 1、不随布局变化），
+     所以这里按 data-slot / data-panel 直接选中库渲染的外层面板元素。
+     折叠时侧栏与主区的 flex-grow 在同一次提交里一起变化（侧栏→0、主区→100），只有两个面板
+     一起过渡、占比和保持 100，宽度才能连续插值；只过渡一侧会因占比和瞬间超过 100 而跳变。
+     过渡窗口由 Dashboard 的 data-sidebar-animating 控制：仅折叠/展开切换时开启约 250ms，
+     窗口缩放等布局重算保持瞬时，避免拖影；移动端侧栏是 Sheet 抽屉（自带开关动画），
+     组内没有面板，规则天然不生效。 */
+  [data-slot='resizable-panel-group'][data-sidebar-animating='true'] > [data-panel] {
+    transition: flex-grow 200ms ease;
+  }
+}
+
+/* 无障碍：系统开启「减少动态效果」时禁用侧栏折叠/展开过渡 */
+@media (prefers-reduced-motion: reduce) {
+  [data-slot='resizable-panel-group'][data-sidebar-animating='true'] > [data-panel] {
+    transition: none;
+  }
 }
 
 @layer utilities {

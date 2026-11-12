@@ -20,7 +20,9 @@ class SkillsTagsUpdateController implements ControllerInterface
 
 		$repository = ServiceContainer::get(Repository::class);
 
-		$existing_tag_ids = array_keys($repository->getTags());
+		// Skill 只能挂 skills 模块的标签（PRD O-9）：迁移后 skills_tags 指向的是
+		// skills 副本 id，跨模块 id（如书签侧同名标签）一律按不存在处理
+		$existing_tag_ids = array_keys($repository->getTags('skills'));
 
 		if (array_diff($tag_ids, $existing_tag_ids)) {
 			throw new ValidationException('[SL-SKL-0008] 提交的标签不存在，请刷新后重试');

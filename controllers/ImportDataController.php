@@ -53,8 +53,11 @@ class ImportDataController implements ControllerInterface
 					 VALUES (:title, :description, :color, :parent, :pinned, :created_at, :updated_at)'
 				);
 
+				// 备份只覆盖书签标签（PRD O-9）：INSERT 不写 module，走列默认值
+				// 'bookmarks'；去重校验同样限定 bookmarks，避免把书签误映射到
+				// skills 模块的同名标签上
 				$checkStmt = $pdo->prepare(
-					'SELECT id FROM tags WHERE title = :title AND parent = :parent'
+					"SELECT id FROM tags WHERE module = 'bookmarks' AND title = :title AND parent = :parent"
 				);
 
 				// 多轮处理：按 parent 依赖顺序插入标签

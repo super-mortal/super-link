@@ -8,6 +8,7 @@ use Framework\Responses\ResponseInterface;
 use function Framework\data;
 use function Utils\createTagsFromSegments;
 use function Utils\extractTagSegments;
+use function Utils\normalizeTagModule;
 
 class TagsCreateController implements ControllerInterface
 {
@@ -17,8 +18,12 @@ class TagsCreateController implements ControllerInterface
 			throw new ValidationException('Invalid input data for tag create.');
 		}
 
+		// 标签按模块隔离（PRD O-9）：新建时带 module（bookmarks / skills），
+		// 缺省或非法值回退 bookmarks，与 GET /api/tags 的兜底方向一致
+		$module = normalizeTagModule($input['module'] ?? null);
+
 		$tag_segments = extractTagSegments($input['title']);
-		$tag_id = createTagsFromSegments($tag_segments);
+		$tag_id = createTagsFromSegments($tag_segments, '', $module);
 
 		return data([
 			'success' => true,

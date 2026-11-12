@@ -17,7 +17,9 @@ export const API_ENDPOINTS = {
     delete: `${API_BASE}/settings/user`,
   },
   tags: {
-    list: `${API_BASE}/tags`,
+    // 标签按模块隔离（PRD O-9）：拉取必须带 module（bookmarks / skills），
+    // 后端缺省或非法值时按 bookmarks 过滤（兼容不带该参数的旧前端）
+    list: (module: string) => `${API_BASE}/tags?module=${module}`,
     create: `${API_BASE}/tags`,
     deleteTag: (id: any) => `${API_BASE}/tags?tag-id=${id}`,
     update: (id: any) => `${API_BASE}/tags/update?tag-id=${id}`,

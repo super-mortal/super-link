@@ -99,10 +99,23 @@ class Repository
 		$this->pdo = $pdo;
 	}
 
-	public function getTags()
+	/**
+	 * 获取标签字典（PRD O-9：书签 / Skill 按模块隔离）
+	 *
+	 * $module 传 'bookmarks' / 'skills' 时只返回该模块的标签；传 null 返回全模块，
+	 * 供导出、按 tag id 的存在性校验等「本来就跨模块」的场景使用。
+	 * 接口语义变化说明：旧版 /api/tags 返回全量，v0.0.6 起由控制器默认按
+	 * module=bookmarks 过滤，旧前端（不带该参数）看到的行为与模块隔离前一致。
+	 */
+	public function getTags($module = null)
 	{
 		$tags = [];
-		$stmt = $this->pdo->query('SELECT * FROM tags ORDER BY title ASC');
+		if ($module === null) {
+			$stmt = $this->pdo->query('SELECT * FROM tags ORDER BY title ASC');
+		} else {
+			$stmt = $this->pdo->prepare('SELECT * FROM tags WHERE module = :module ORDER BY title ASC');
+			$stmt->execute([':module' => $module]);
+		}
 		while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
 			$tags[(int)$row['id']] = $row;
 		}
@@ -1273,7 +1286,28 @@ class Repository
 		}
 
 		$sql_in = implode(',', array_fill(0, count($tag_ids), '?'));
-		$stmt = $this->pdo->prepare("DELETE FROM items_tags 
+		$stmt = $this->pdo->prepare("DELETE FROM items_tags
+		WHERE tag_id IN ($sql_in)");
+
+		return $stmt->execute($tag_ids);
+
+	}
+
+	/**
+	 * 删除 skills_tags 中引用这些标签的关联（PRD O-9）
+	 *
+	 * SQLite 连接未开 PRAGMA foreign_keys，skills_tags 的 ON DELETE CASCADE
+	 * 不会生效；删除 skills 模块标签时必须手动清理，否则残留悬空关联，
+	 * 后续按模块校验标签存在性会直接报错。
+	 */
+	public function deleteSkillsTagsAttachment(array $tag_ids)
+	{
+		if (empty($tag_ids)) {
+			return false;
+		}
+
+		$sql_in = implode(',', array_fill(0, count($tag_ids), '?'));
+		$stmt = $this->pdo->prepare("DELETE FROM skills_tags
 		WHERE tag_id IN ($sql_in)");
 
 		return $stmt->execute($tag_ids);

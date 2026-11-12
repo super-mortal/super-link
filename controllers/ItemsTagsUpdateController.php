@@ -28,7 +28,8 @@ class ItemsTagsUpdateController implements ControllerInterface
 		$tags_ids_some = $input['tag-ids-some'];
 
 		$repository = ServiceContainer::get(Repository::class);
-		$tags = $repository->getTags();
+		// 书签物品只能挂 bookmarks 模块的标签（PRD O-9）：跨模块 id 一律按不存在处理
+		$tags = $repository->getTags('bookmarks');
 		$exising_tag_ids = array_keys($tags);
 		if (array_diff($tags_ids_all, $exising_tag_ids) || array_diff($tags_ids_some, $exising_tag_ids)) {
 			return throw new ValidationException('Non-existing tags provided');

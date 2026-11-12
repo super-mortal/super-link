@@ -30,12 +30,19 @@ import { DEFAULT_MODULE } from '@/lib/modules.ts';
 import { getCookie } from '@/lib/utils.ts';
 import { preferencesStore } from './preferencesStore.ts';
 
+/**
+ * 标签字典按模块隔离（PRD O-9）：只有书签 / Skill 两本标签字典，
+ * 账号库没有标签入口，兜底按 bookmarks 处理。
+ */
+const tagModuleOf = (module: ModuleKey): 'bookmarks' | 'skills' => (module === 'skills' ? 'skills' : 'bookmarks');
+
 class MainStore {
   prefStore: typeof preferencesStore;
   items: ItemType[] = [];
   skills: SkillType[] = [];
-  /** 当前模块：书签 / Skill。标签筛选两模块共用 */
+  /** 当前模块：书签 / Skill。标签筛选随模块切换重置 */
   module: ModuleKey = DEFAULT_MODULE;
+  /** 当前模块的标签字典（PRD O-9 起按模块隔离，不再全局一份） */
   tags: TagsObjectType = [];
   user: UserType | null = null;
   isAuthRequired = null;
@@ -229,16 +236,25 @@ class MainStore {
   setIsAuthRequired = (val: boolean) => {
     this.isAuthRequired = val;
   };
-  fetchTags = async () => {
-    return this.runRequest(API_ENDPOINTS.tags.list, 'GET', {}, '获取标签失败').then((data) => {
+  /**
+   * 当前模块的标签字典（PRD O-9：书签 / Skill 各自一份）。
+   * 拉取与创建都带 module，默认取当前模块；写操作后按同一 module 刷新。
+   */
+  fetchTags = async (module: ModuleKey = this.module) => {
+    return this.runRequest(API_ENDPOINTS.tags.list(tagModuleOf(module)), 'GET', {}, '获取标签失败').then((data) => {
       if (data === null) {
         return;
       }
       this.setTags(data);
     });
   };
-  createTag = async (title: string): Promise<number | null> => {
-    const response = await this.runRequest(API_ENDPOINTS.tags.create, 'POST', { title }, '创建标签失败');
+  createTag = async (title: string, module: ModuleKey = this.module): Promise<number | null> => {
+    const response = await this.runRequest(
+      API_ENDPOINTS.tags.create,
+      'POST',
+      { title, module: tagModuleOf(module) },
+      '创建标签失败'
+    );
 
     if (response === null || !response?.data?.tag_id) {
       return null;

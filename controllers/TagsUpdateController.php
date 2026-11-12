@@ -3,6 +3,7 @@
 namespace Controllers;
 
 use Framework\ControllerInterface;
+use Framework\Exceptions\ValidationException;
 use Framework\Responses\ResponseInterface;
 use Framework\ServiceContainer;
 use Models\Repository;
@@ -24,10 +25,23 @@ class TagsUpdateController implements ControllerInterface
 	{
 		$tag_id = (int)$input['tag-id'];
 
+		$repository = ServiceContainer::get(Repository::class);
+		// 标签按模块隔离（PRD O-9）：父标签只能来自同一模块。先取全量字典确认
+		// 标签存在并读出它的 module，再按该模块校验 / 新建父标签，避免把另一
+		// 模块的同名标签设成父级（侧栏树会跨模块串层级）
+		$all_tags = $repository->getTags();
+		$tag = $all_tags[$tag_id] ?? null;
+
+		if (null === $tag) {
+			throw new ValidationException("Tag with ID $tag_id does not exist");
+		}
+
+		$module = $tag['module'] ?? 'bookmarks';
+
 		if ($input['parent'] === 0) {
 			$parent_id = 0;
 		} else {
-			[$parent_id] = processInputTags([$input['parent']]);
+			[$parent_id] = processInputTags([$input['parent']], $module);
 		}
 
 		if ($tag_id === $parent_id) {
@@ -37,7 +51,6 @@ class TagsUpdateController implements ControllerInterface
 		$tag_title = trim($input['title']);
 		$tag_description = trim($input['description']);
 
-		$repository = ServiceContainer::get(Repository::class);
 		$repository->updateTag(
 			$tag_id,
 			$tag_title,

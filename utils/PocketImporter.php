@@ -30,7 +30,9 @@ class PocketImporter
 		[$collections, $collection_bookmarks] = $this->extractDataFromCollections($temp_dir);
 		[$tags, $statuses, $bookmarks] = $this->extractDataFromLinks($temp_dir, $collection_bookmarks);
 
-		$existing_tags = $this->repository->getTags();
+		// Pocket 导入只写书签（PRD O-9）：已有标签按 bookmarks 模块匹配，
+		// 不复用 skills 模块的同名标签
+		$existing_tags = $this->repository->getTags('bookmarks');
 
 		// Create tags from Pocket collections
 		$collection_tag_map = [];

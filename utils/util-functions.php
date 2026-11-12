@@ -49,10 +49,23 @@ function extractTagSegments(string $title): array
 	return $segments;
 }
 
-function createTagsFromSegments(array $tag_segments, $tag_description = ''): int
+/**
+ * 归一化标签模块参数（PRD O-9）
+ *
+ * 只接受 bookmarks / skills；缺省或非法值一律回退 bookmarks。
+ * 这样前后端版本不一致时（旧前端不带 module 参数），行为与模块隔离前一致，
+ * 不会把 skills 标签泄给书签侧。
+ */
+function normalizeTagModule($raw): string
+{
+	return in_array($raw, ['bookmarks', 'skills'], true) ? $raw : 'bookmarks';
+}
+
+function createTagsFromSegments(array $tag_segments, $tag_description = '', string $module = 'bookmarks'): int
 {
 	$repository = ServiceContainer::get(Repository::class);
-	$tags = $repository->getTags();
+	// 只在当前模块的字典里查重：唯一索引 (module, title, parent) 的语义一致
+	$tags = $repository->getTags($module);
 	$tag_creator = ServiceContainer::get(TagCreator::class);
 
 	$parent_tag_id = 0;
@@ -67,30 +80,32 @@ function createTagsFromSegments(array $tag_segments, $tag_description = ''): int
 			continue;
 		}
 
-		$parent_tag_id = $tag_creator->createTag($tag_title, $tag_description, $parent_tag_id);
+		$parent_tag_id = $tag_creator->createTag($tag_title, $tag_description, $parent_tag_id, 'gray', false, $module);
 		$check_existing_parent = false;
 	}
 
 	return (int)$parent_tag_id;
 }
 
-function processInputTags($input_tags): array
+function processInputTags($input_tags, string $module = 'bookmarks'): array
 {
 	$repository = ServiceContainer::get(Repository::class);// Handle tags
 
 	$new_tag_paths = array_filter($input_tags, fn($tag) => is_string($tag) && str_starts_with($tag, 'create:'));
 	$input_existing_tag_ids = array_map('intval', array_diff($input_tags, $new_tag_paths));
 
-	$tags = $repository->getTags();
+	// 存在性校验与新建都限定在当前模块：书签物品只能挂 bookmarks 标签，
+	// Skill 只能挂 skills 标签（PRD O-9），跨模块 id 一律按不存在处理
+	$tags = $repository->getTags($module);
 	$exising_tag_ids = array_keys($tags);
 	if (array_diff($input_existing_tag_ids, $exising_tag_ids)) {
 		throw new ValidationException('Non-existing tags provided');
 	}
 
-	$input_created_tag_ids = array_map(function ($tag) {
+	$input_created_tag_ids = array_map(function ($tag) use ($module) {
 		$tag_path = substr($tag, strlen('create:'));
 		$tag_segments = extractTagSegments($tag_path);
-		$tag_id = createTagsFromSegments($tag_segments);
+		$tag_id = createTagsFromSegments($tag_segments, '', $module);
 		return $tag_id;
 	}, $new_tag_paths);
 	return [

@@ -462,17 +462,14 @@ export const ModuleList = observer(() => {
 
   const [isLoading, setIsLoading] = useState(true);
   const loadedModules = React.useRef<Set<ModuleKey>>(new Set());
-  const isTagsLoaded = React.useRef(false);
 
   useEffect(() => {
     const loadData = async () => {
       const requests: Promise<unknown>[] = [];
 
-      if (!isTagsLoaded.current) {
-        isTagsLoaded.current = true;
-        requests.push(store.fetchTags());
-      }
-      // 两个模块按需加载，切换回来时复用已拉取的数据
+      // 标签字典按模块隔离（PRD O-9）：每次进入 / 切换模块都拉当前模块的标签，
+      // 避免设置页导入书签后另一模块字典过期；列表数据仍按模块缓存复用
+      requests.push(store.fetchTags(store.module));
       if (!loadedModules.current.has(store.module)) {
         loadedModules.current.add(store.module);
         requests.push(store.module === 'skills' ? store.fetchSkills() : store.fetchItems());

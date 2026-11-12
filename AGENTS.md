@@ -21,7 +21,8 @@ super-link 是自托管的个人数据管理工具，从书签管理起步，通
 | v0.0.5 | 2026-11-10 | 账号库（加密账号 / 分组 / 平台 / TOTP）、设置页账号库分区与加密导出导入 |
 
 - 当前版本号写在根目录 `app-info.json` 的 `version` 字段；`GET /api/app-info` 与登录页 / 设置页的版本号都取自此文件，**发版时必须同步更新**。
-- 发布流程：整理版本号与四段式发布说明 → 用户过目确认 → 更新 `app-info.json` 并提交 → 打 `vX.Y.Z` tag 并推送 → 创建 GitHub Release（`body` 即发布说明，应用内「查看更新内容」弹窗展示）。未经用户确认不得执行后四步。
+- 发布流程：整理版本号与四段式发布说明 → 用户过目确认 → 更新 `app-info.json` 并提交 → 打 `vX.Y.Z` tag 并推送 → CI（`.github/workflows/docker-publish.yml`）自动构建 Docker 镜像推 GHCR 并创建 GitHub Release。未经用户确认不得执行后四步。
+- **Release 说明的现状**：CI 的 `softprops/action-gh-release` 使用 `generate_release_notes: true`，body 为 GitHub 自动生成的 changelog 链接，**不是**四段式中文发布说明；应用内「查看更新内容」弹窗展示的就是该 body。v0.0.6 的 Release 即为此形态，四段式说明需在 Release 页面手动编辑 body 补上（或改工作流从 `docs/releases/<tag>.md` 读取）。
 
 ## 协作与发布流程
 

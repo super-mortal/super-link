@@ -42,7 +42,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu.tsx';
 import { Button } from '@/components/ui/button.tsx';
-import { PackagePlus, PlusIcon, Settings2, Tag, X } from 'lucide-react';
+import { PackagePlus, PlusIcon, Settings2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Dashboard } from '@/layouts/Dashboard.tsx';
 import { BulkActionControls } from '@/components/Table/Controls/BulkActionControls.tsx';
@@ -400,10 +400,6 @@ const Table = observer(() => {
     table: <TableLayout table={table} rows={currentRows} module={module} visibleFields={visibleFields} />,
   };
 
-  // 标签筛选横幅只对具体标签显示；'none'（未标记）不显示
-  const activeTag = typeof store.tagFilter === 'number' ? store.tags[store.tagFilter] : undefined;
-  const activeTagLabel = activeTag ? activeTag.fullPath.replaceAll('\\/', '/') : String(store.tagFilter);
-
   const emptyText =
     store.tagFilter === 'none'
       ? `没有未标记的${moduleConfig.noun}。`
@@ -441,22 +437,6 @@ const Table = observer(() => {
       </header>
 
       <div ref={setScrollContainerNode} className="h-full overflow-x-clip overflow-y-scroll">
-        {typeof store.tagFilter === 'number' && (
-          <div className="bg-muted text-muted-foreground mx-4 mt-4 flex items-center gap-2 rounded-md px-3 py-2 text-xs">
-            <Tag className="h-3 w-3 shrink-0" />
-            <span className="truncate">
-              按标签筛选：<b className="text-foreground font-medium">{activeTagLabel}</b>
-            </span>
-            <button
-              type="button"
-              className="hover:text-foreground ml-auto flex shrink-0 items-center gap-1"
-              onClick={() => setTagFilter(null)}
-            >
-              <X className="h-3 w-3" />
-              清除
-            </button>
-          </div>
-        )}
         {filteredRowCount > 0 ? (
           <div className={`flex h-full flex-col justify-between gap-5 module-list--${layout}`}>
             {layouts[layout]}

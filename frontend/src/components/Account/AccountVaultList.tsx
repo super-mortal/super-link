@@ -5,7 +5,7 @@ import { startTransition, useEffect, useMemo, useState } from 'react';
 import type { Column, SortingState, VisibilityState } from '@tanstack/react-table';
 import { getCoreRowModel, getPaginationRowModel, useReactTable } from '@tanstack/react-table';
 import { observer } from 'mobx-react-lite';
-import { Layers, Settings2, X } from 'lucide-react';
+import { Settings2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { StoreContext } from '@/store/storeContext.ts';
 import { Search } from '@/components/Table/Controls/Search.tsx';
@@ -382,23 +382,6 @@ export const AccountVaultList = observer(() => {
         />
 
         <div ref={setScrollContainerNode} className="h-full overflow-x-clip overflow-y-scroll">
-          {/* 平台筛选横幅：与书签的标签横幅同式样，提供「清除」快捷入口 */}
-          {platform && (
-            <div className="bg-muted text-muted-foreground mx-4 mt-4 flex items-center gap-2 rounded-md px-3 py-2 text-xs">
-              <Layers className="h-3 w-3 shrink-0" />
-              <span className="truncate">
-                按平台筛选：<b className="text-foreground font-medium">{platform}</b>
-              </span>
-              <button
-                type="button"
-                className="hover:text-foreground ml-auto flex shrink-0 items-center gap-1"
-                onClick={() => setPlatformFilter(null)}
-              >
-                <X className="h-3 w-3" />
-                清除
-              </button>
-            </div>
-          )}
           {store.accounts.length > 0 ? (
             <div className={`flex h-full flex-col justify-between gap-5 module-list--${layout}`}>
               {layouts[layout]}

@@ -62,11 +62,13 @@ const TagItem = ({
 
   const [isEditOpen, setIsEditOpen] = React.useState(false);
 
+  // toggle 语义：点未选中的标签进入筛选，再点一次已选中的标签取消筛选（PRD O-12，
+  // 筛选横幅已删除，侧栏高亮是唯一状态提示）；移动端点完收起侧栏
   const selectTag = () => {
     if (isEditOpen) {
       return;
     }
-    setTagFilter(tag.id);
+    setTagFilter(isTagSelected ? null : tag.id);
     if (isMobile) {
       toggleSidebar();
     }

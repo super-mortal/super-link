@@ -94,6 +94,100 @@ class Repository
 		'idx_account_authorizations_linked' => 'CREATE INDEX IF NOT EXISTS "idx_account_authorizations_linked" ON account_authorizations(linked_account_id)',
 	];
 
+	/**
+	 * servers 允许写入的列白名单：新增与部分更新共用
+	 *
+	 * 更新时只处理调用方显式传入的列（PATCH 语义），未传列保持原值；
+	 * token_hash / token_salt 不在其内——Token 轮换是独立流程（重置即失效），
+	 * 不与名称 / 备注这类普通编辑混在一起。
+	 */
+	private const SERVER_WRITABLE_COLUMNS = [
+		'name',
+		'note',
+		'group_name',
+		'paused',
+	];
+
+	/**
+	 * servers 系统信息冗余列白名单（PRD §6 允许冗余；§5.3 系统信息口径）
+	 *
+	 * agent 首次回传或信息变化时整组更新；ip_address 同时供列表页搜索使用
+	 * （PRD §5.5：搜索名称 / 备注 / IP）。
+	 */
+	private const SERVER_SYSTEM_INFO_COLUMNS = [
+		'os_name',
+		'kernel',
+		'cpu_cores',
+		'ip_address',
+		'agent_version',
+	];
+
+	/**
+	 * servers 面向用户查询返回的列（不含 token_hash / token_salt）
+	 *
+	 * 哈希与盐是服务端凭据材料，前端没有任何界面需要它们（PRD D6 选项 b：
+	 * Token 不明文回看），用户态查询一律不 SELECT，缩小泄露面。
+	 */
+	private const SERVER_PUBLIC_COLUMNS = [
+		'id',
+		'name',
+		'note',
+		'group_name',
+		'paused',
+		'os_name',
+		'kernel',
+		'cpu_cores',
+		'ip_address',
+		'agent_version',
+		'last_report_at',
+		'created_at',
+		'updated_at',
+	];
+
+	/**
+	 * 服务器列表允许的排序字段白名单
+	 *
+	 * ORDER BY 不能用预处理占位符，只能拼字符串；未知值一律回落到 id，
+	 * 与 ACCOUNT_SORTS 同一套路，杜绝 SQL 注入。
+	 */
+	private const SERVER_SORTS = [
+		'id' => 'id',
+		'name' => 'name COLLATE NOCASE',
+		'group_name' => 'group_name COLLATE NOCASE',
+		'last_report_at' => 'last_report_at',
+		'created_at' => 'created_at',
+		'updated_at' => 'updated_at',
+	];
+
+	/**
+	 * 明细查询支持的时间范围（PRD §6 接口草案：range=1h|6h|24h|30d）
+	 *
+	 * 键为接口传入的 range 字面量，值为相对时间表达式；30 天是保留上限
+	 * （决策 D4），更早的数据已被 cleanupServerRetention() 清理，查了也是空。
+	 */
+	private const SERVER_METRIC_RANGES = [
+		'1h' => '-1 hour',
+		'6h' => '-6 hours',
+		'24h' => '-24 hours',
+		'30d' => '-30 days',
+	];
+
+	/**
+	 * 服务器监控索引清单（name => 建索引 SQL）
+	 *
+	 * 建表与增量迁移共用：CREATE INDEX IF NOT EXISTS 保证可重复执行，
+	 * 老库升级时也能补齐后来新增的索引（模式同 ACCOUNT_INDEXES）。
+	 * server_connections 的 server_id 是 UNIQUE：每 Token 单活跃连接由索引
+	 * 兜底（PRD §5.2 / D11），registerServerConnection() 仍会显式先删旧行。
+	 */
+	private const SERVER_INDEXES = [
+		'idx_servers_group_name' => 'CREATE INDEX IF NOT EXISTS "idx_servers_group_name" ON servers(group_name)',
+		'idx_server_metrics_server_received' => 'CREATE INDEX IF NOT EXISTS "idx_server_metrics_server_received" ON server_metrics(server_id, received_at)',
+		'idx_server_disks_server_received' => 'CREATE INDEX IF NOT EXISTS "idx_server_disks_server_received" ON server_disks(server_id, received_at)',
+		'idx_server_docker_server_received' => 'CREATE INDEX IF NOT EXISTS "idx_server_docker_server_received" ON server_docker(server_id, received_at)',
+		'idx_server_connections_server_id' => 'CREATE UNIQUE INDEX IF NOT EXISTS "idx_server_connections_server_id" ON server_connections(server_id)',
+	];
+
 	public function __construct($pdo)
 	{
 		$this->pdo = $pdo;
@@ -1055,6 +1149,542 @@ class Repository
 	}
 
 	/**
+	 * 服务器列表（PRD §5.5：个人级数量小，返回全量过滤结果，前端自行分页）
+	 *
+	 * 与 getAccounts 同套路：搜索 / 分组过滤 + 排序白名单，limit / offset 可选。
+	 * 只返回 SERVER_PUBLIC_COLUMNS：token_hash / token_salt 是服务端凭据材料，
+	 * 用户态接口不接触（PRD D6 选项 b）。最新指标摘要由调用方按 server_id
+	 * 批量查明细表后组装，这里不做联表——明细表行量大（30 天 × 288 点/天），
+	 * 联表会拖垮列表查询。
+	 */
+	public function getServers(array $filters = []): array
+	{
+		$where = [];
+		$bindings = [];
+
+		$search = trim((string)($filters['search'] ?? ''));
+		if ($search !== '') {
+			// 搜索名称 / 备注 / IP（PRD §5.5）；IP 是 servers 的冗余列，无需联表明细表
+			$where[] = "(name LIKE :search ESCAPE '\\'
+				OR note LIKE :search ESCAPE '\\'
+				OR ip_address LIKE :search ESCAPE '\\')";
+			$bindings[':search'] = '%' . $this->escapeLike($search) . '%';
+		}
+
+		$group_name = trim((string)($filters['group_name'] ?? ''));
+		if ($group_name !== '') {
+			$where[] = 'group_name = :group_name';
+			$bindings[':group_name'] = $group_name;
+		}
+
+		$where_sql = empty($where) ? '' : ' WHERE ' . implode(' AND ', $where);
+
+		// 排序白名单：未知 sort 值（含注入尝试）回落到 id 倒序，新加入的服务器在前
+		$sort = (string)($filters['sort'] ?? '');
+		$sort_sql = self::SERVER_SORTS[$sort] ?? self::SERVER_SORTS['id'];
+		$order = strtolower((string)($filters['order'] ?? ''));
+		$order_sql = $order === 'asc' ? 'ASC' : 'DESC';
+
+		// 追加 id 作为次级排序，保证同一时间戳下结果稳定、可复现
+		$sql = 'SELECT ' . implode(', ', self::SERVER_PUBLIC_COLUMNS) . ' FROM servers' . $where_sql
+			. ' ORDER BY ' . $sort_sql . ' ' . $order_sql . ', id ' . $order_sql;
+
+		$limit = (int)($filters['limit'] ?? 0);
+		$offset = max(0, (int)($filters['offset'] ?? 0));
+		if ($limit > 0) {
+			$sql .= ' LIMIT :limit OFFSET :offset';
+		}
+
+		$stmt = $this->pdo->prepare($sql);
+		$this->bindFilterValues($stmt, $bindings);
+		if ($limit > 0) {
+			$stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+			$stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+		}
+		$stmt->execute();
+
+		return $stmt->fetchAll(PDO::FETCH_ASSOC);
+	}
+
+	/**
+	 * 查询单台服务器（含 token_hash / token_salt 的完整行）
+	 *
+	 * 面向服务端内部使用：agent Token 校验、Token 重置都要读哈希与盐。
+	 * 用户态接口拿到返回值后必须自行剔除这两列再响应——本方法不替调用方
+	 * 裁剪，是因为内部调用方（如 report 回传）需要完整行，统一裁剪会逼出
+	 * 第二个「带凭据」的查询方法，反而更容易用错。
+	 */
+	public function getServerById(int $id)
+	{
+		$stmt = $this->pdo->prepare('SELECT * FROM servers WHERE id = :id');
+		$stmt->execute([':id' => $id]);
+		return $stmt->fetch(PDO::FETCH_ASSOC);
+	}
+
+	/**
+	 * 新增服务器，返回新 id
+	 *
+	 * token_hash / token_salt 由调用方（控制器 + Utils\ServerToken）生成后传入：
+	 * Token 明文只在添加 / 重置响应里完整展示一次，任何路径都不落库、不写日志
+	 * （PRD D6 选项 b / §5.6）。系统信息列此时还是默认空值，等 agent 首次
+	 * 回传由 updateServerSystemInfo() 补齐。
+	 */
+	public function createServer(array $data): int
+	{
+		$date = date('Y-m-d H:i:s');
+		$stmt = $this->pdo->prepare(
+			'INSERT INTO servers (name, note, group_name, token_hash, token_salt, paused, created_at, updated_at)
+			VALUES (:name, :note, :group_name, :token_hash, :token_salt, :paused, :created_at, :updated_at)'
+		);
+		$stmt->execute([
+			':name' => (string)($data['name'] ?? ''),
+			':note' => (string)($data['note'] ?? ''),
+			// 分组取值（家庭 / 公网 / 公司 / 归档，PRD D10）由控制器校验，
+			// 这里只做字符串兜底，真正的必填校验在控制器
+			':group_name' => (string)($data['group_name'] ?? '家庭'),
+			':token_hash' => (string)($data['token_hash'] ?? ''),
+			':token_salt' => (string)($data['token_salt'] ?? ''),
+			':paused' => !empty($data['paused']) ? 1 : 0,
+			':created_at' => $date,
+			':updated_at' => $date,
+		]);
+		return (int)$this->pdo->lastInsertId();
+	}
+
+	/**
+	 * 部分更新服务器：名称 / 备注 / 分组 / 暂停恢复（PATCH 语义）
+	 *
+	 * 只更新显式传入的列，未传列保持原值；paused 归一为 0 / 1。
+	 * token_hash / token_salt 不在这里更新（Token 轮换是独立流程）。
+	 * 返回 true 仅代表语句执行成功；服务器是否存在由调用方先用
+	 * getServerById() 判断（rowCount 为 0 也可能是值未变化）。
+	 */
+	public function updateServer(int $id, array $data): bool
+	{
+		$sets = [];
+		$bindings = [];
+
+		foreach (self::SERVER_WRITABLE_COLUMNS as $column) {
+			if (!array_key_exists($column, $data)) {
+				continue;
+			}
+			if ('paused' === $column) {
+				$sets[] = 'paused = :paused';
+				$bindings[':paused'] = !empty($data['paused']) ? 1 : 0;
+				continue;
+			}
+			$sets[] = $column . ' = :' . $column;
+			$bindings[':' . $column] = (string)$data[$column];
+		}
+
+		$sets[] = 'updated_at = :updated_at';
+		$bindings[':updated_at'] = date('Y-m-d H:i:s');
+		$bindings[':id'] = $id;
+
+		$stmt = $this->pdo->prepare(
+			'UPDATE servers SET ' . implode(', ', $sets) . ' WHERE id = :id'
+		);
+		return $stmt->execute($bindings);
+	}
+
+	/**
+	 * 更新系统信息冗余列（PRD §6 / §5.3，agent 回传时调用）
+	 *
+	 * 只更新显式传入的列；cpu_cores 按整数、其余按字符串落库。
+	 * 不刷新 updated_at：系统信息随回传变化，刷新会让 updated_at 失去
+	 * 「用户编辑时间」的语义；最后回传时间看 last_report_at。
+	 */
+	public function updateServerSystemInfo(int $id, array $data): bool
+	{
+		$sets = [];
+		$bindings = [];
+
+		foreach (self::SERVER_SYSTEM_INFO_COLUMNS as $column) {
+			if (!array_key_exists($column, $data)) {
+				continue;
+			}
+			$sets[] = $column . ' = :' . $column;
+			$bindings[':' . $column] = 'cpu_cores' === $column
+				? (int)$data[$column]
+				: (string)$data[$column];
+		}
+
+		if (empty($sets)) {
+			return true;
+		}
+
+		$bindings[':id'] = $id;
+		$stmt = $this->pdo->prepare(
+			'UPDATE servers SET ' . implode(', ', $sets) . ' WHERE id = :id'
+		);
+		return $stmt->execute($bindings);
+	}
+
+	/**
+	 * 刷新最后回传时间（agent report 成功落库后调用）
+	 *
+	 * 时间取服务端当前时间：数据时间戳一律以 Hub 接收时间为准，不信任
+	 * 客户端时钟（PRD §5.2）。last_report_at 是列表 / 详情页「最后回传」
+	 * 与离线判定的数据基础。
+	 */
+	public function updateServerLastReportAt(int $id): bool
+	{
+		$stmt = $this->pdo->prepare(
+			'UPDATE servers SET last_report_at = :last_report_at WHERE id = :id'
+		);
+		return $stmt->execute([
+			':last_report_at' => date('Y-m-d H:i:s'),
+			':id' => $id,
+		]);
+	}
+
+	/**
+	 * 删除服务器及其全部历史数据（PRD §5.1：删除连同历史数据，二次确认在控制器）
+	 *
+	 * SQLite 外键级联依赖 PRAGMA foreign_keys=ON，而本项目连接未开启该 pragma
+	 * （见 deleteSkill / deleteAccounts 的同类处理），所以三张明细表与连接
+	 * 注册表必须显式删除，否则会留下孤儿行。四步与删除本身放在同一事务里，
+	 * 避免中途失败留下半删除状态。删除目标不存在时同样返回 true（幂等）。
+	 */
+	public function deleteServer(int $id): bool
+	{
+		$this->pdo->beginTransaction();
+		try {
+			// 表名来自硬编码清单而非用户输入；server_id 走参数绑定
+			foreach (['server_connections', 'server_metrics', 'server_disks', 'server_docker'] as $table) {
+				$stmt = $this->pdo->prepare("DELETE FROM {$table} WHERE server_id = :server_id");
+				$stmt->execute([':server_id' => $id]);
+			}
+
+			$stmt = $this->pdo->prepare('DELETE FROM servers WHERE id = :id');
+			$stmt->execute([':id' => $id]);
+
+			$this->pdo->commit();
+			return true;
+		} catch (Exception $e) {
+			if ($this->pdo->inTransaction()) {
+				$this->pdo->rollBack();
+			}
+			return false;
+		}
+	}
+
+	/**
+	 * 写入一条指标明细（agent 回传全量快照时调用，PRD §5.3）
+	 *
+	 * received_at 一律取服务端接收时间：客户端即使带了时间戳也忽略，
+	 * 防止脏数据打乱 30 天清理边界与图表排序（PRD §5.2）。
+	 * 数值范围校验（CPU 0–100、内存不大于总量等，PRD §5.6）由调用方完成，
+	 * 本方法只负责落库。
+	 */
+	public function insertServerMetrics(int $server_id, array $metrics): bool
+	{
+		$stmt = $this->pdo->prepare(
+			'INSERT INTO server_metrics
+			(server_id, received_at, cpu, mem_used, mem_total, mem_cached, swap_used, swap_total, load1, load5, load15, net_rx, net_tx, uptime)
+			VALUES
+			(:server_id, :received_at, :cpu, :mem_used, :mem_total, :mem_cached, :swap_used, :swap_total, :load1, :load5, :load15, :net_rx, :net_tx, :uptime)'
+		);
+		return $stmt->execute([
+			':server_id' => $server_id,
+			':received_at' => date('Y-m-d H:i:s'),
+			':cpu' => (float)($metrics['cpu'] ?? 0),
+			':mem_used' => (int)($metrics['mem_used'] ?? 0),
+			':mem_total' => (int)($metrics['mem_total'] ?? 0),
+			':mem_cached' => (int)($metrics['mem_cached'] ?? 0),
+			':swap_used' => (int)($metrics['swap_used'] ?? 0),
+			':swap_total' => (int)($metrics['swap_total'] ?? 0),
+			':load1' => (float)($metrics['load1'] ?? 0),
+			':load5' => (float)($metrics['load5'] ?? 0),
+			':load15' => (float)($metrics['load15'] ?? 0),
+			':net_rx' => (int)($metrics['net_rx'] ?? 0),
+			':net_tx' => (int)($metrics['net_tx'] ?? 0),
+			':uptime' => (int)($metrics['uptime'] ?? 0),
+		]);
+	}
+
+	/**
+	 * 按服务器 + 时间范围查指标明细（PRD §6：range=1h|6h|24h|30d）
+	 *
+	 * $filters 支持：
+	 *   range       —— 时间范围字面量（见 SERVER_METRIC_RANGES），换算成 since；
+	 *   since/until —— 显式的 received_at 起止（含边界），优先于 range，供聚合
+	 *                 查询跨边界取数；
+	 *   limit       —— 最多返回行数（0 或不传表示不限制）。
+	 * 结果按 received_at 升序：图表与聚合都按时间正序消费。
+	 * 本方法只做明细查询；按小时聚合由上层接口完成（决策 D4：不建聚合表）。
+	 */
+	public function getServerMetrics(int $server_id, array $filters = []): array
+	{
+		$sql = 'SELECT * FROM server_metrics WHERE server_id = :server_id';
+		$bindings = [':server_id' => $server_id];
+
+		$since = trim((string)($filters['since'] ?? ''));
+		$range = (string)($filters['range'] ?? '');
+		if ($since === '' && isset(self::SERVER_METRIC_RANGES[$range])) {
+			$since = date('Y-m-d H:i:s', strtotime(self::SERVER_METRIC_RANGES[$range]));
+		}
+		if ($since !== '') {
+			$sql .= ' AND received_at >= :since';
+			$bindings[':since'] = $since;
+		}
+
+		$until = trim((string)($filters['until'] ?? ''));
+		if ($until !== '') {
+			$sql .= ' AND received_at <= :until';
+			$bindings[':until'] = $until;
+		}
+
+		$sql .= ' ORDER BY received_at ASC';
+
+		$limit = (int)($filters['limit'] ?? 0);
+		if ($limit > 0) {
+			$sql .= ' LIMIT :limit';
+		}
+
+		$stmt = $this->pdo->prepare($sql);
+		$this->bindFilterValues($stmt, $bindings);
+		if ($limit > 0) {
+			$stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+		}
+		$stmt->execute();
+
+		return $stmt->fetchAll(PDO::FETCH_ASSOC);
+	}
+
+	/**
+	 * 查最新一条指标明细（列表卡片 / 详情页当前值用）
+	 *
+	 * 没有数据时返回 false：「等待连接」的服务器就是这一状态（PRD §5.1）。
+	 */
+	public function getLatestServerMetrics(int $server_id)
+	{
+		$stmt = $this->pdo->prepare(
+			'SELECT * FROM server_metrics WHERE server_id = :server_id ORDER BY received_at DESC, id DESC LIMIT 1'
+		);
+		$stmt->execute([':server_id' => $server_id]);
+		return $stmt->fetch(PDO::FETCH_ASSOC);
+	}
+
+	/**
+	 * 批量写入磁盘明细（一次快照的每个挂载点一行，PRD §5.3）
+	 *
+	 * received_at 整批取同一个服务端时间：同一快照的各行时间必须一致，
+	 * 「查最新一批」才能按 received_at 完整取回。空数组直接返回 true
+	 * （无磁盘数据 / 采集失败的场景，不影响其余指标回传）。
+	 */
+	public function insertServerDisks(int $server_id, array $disks): bool
+	{
+		if (empty($disks)) {
+			return true;
+		}
+
+		$received_at = date('Y-m-d H:i:s');
+		$placeholders = [];
+		$params = [];
+		foreach ($disks as $disk) {
+			$placeholders[] = '(?, ?, ?, ?, ?)';
+			array_push(
+				$params,
+				$server_id,
+				$received_at,
+				(string)($disk['mount'] ?? ''),
+				(int)($disk['used'] ?? 0),
+				(int)($disk['total'] ?? 0)
+			);
+		}
+
+		$stmt = $this->pdo->prepare(
+			'INSERT INTO server_disks (server_id, received_at, mount, used, total) VALUES '
+			. implode(', ', $placeholders)
+		);
+		return $stmt->execute($params);
+	}
+
+	/**
+	 * 查最新一批磁盘明细（详情页磁盘区用）
+	 *
+	 * 「一批」= 该服务器 received_at 最大的所有行：一次快照写入多个挂载点，
+	 * 只有按批次取回，才不会混进上一批已卸载的挂载点。子查询复用
+	 * :server_id 命名参数（PDO 命名参数可重复出现）。
+	 */
+	public function getLatestServerDisks(int $server_id): array
+	{
+		$stmt = $this->pdo->prepare(
+			'SELECT * FROM server_disks
+			WHERE server_id = :server_id AND received_at = (
+				SELECT MAX(received_at) FROM server_disks WHERE server_id = :server_id
+			)
+			ORDER BY mount ASC'
+		);
+		$stmt->execute([':server_id' => $server_id]);
+		return $stmt->fetchAll(PDO::FETCH_ASSOC);
+	}
+
+	/**
+	 * 批量写入 Docker 容器明细（一次快照的每个容器一行，PRD §5.3）
+	 *
+	 * 口径：CPU 为百分比（不乘核数）、内存为 usage − inactive_file、网络为
+	 * agent 侧算好的速率 bytes/s。Docker 不可用时传空数组即可，不影响其余
+	 * 指标回传（PRD §5.3）。received_at 整批一致，语义同磁盘。
+	 */
+	public function insertServerDocker(int $server_id, array $containers): bool
+	{
+		if (empty($containers)) {
+			return true;
+		}
+
+		$received_at = date('Y-m-d H:i:s');
+		$placeholders = [];
+		$params = [];
+		foreach ($containers as $container) {
+			$placeholders[] = '(?, ?, ?, ?, ?, ?, ?, ?, ?)';
+			array_push(
+				$params,
+				$server_id,
+				$received_at,
+				(string)($container['container'] ?? ''),
+				(float)($container['cpu'] ?? 0),
+				(int)($container['mem_used'] ?? 0),
+				(int)($container['mem_limit'] ?? 0),
+				(int)($container['net_rx'] ?? 0),
+				(int)($container['net_tx'] ?? 0),
+				(string)($container['state'] ?? '')
+			);
+		}
+
+		$stmt = $this->pdo->prepare(
+			'INSERT INTO server_docker
+			(server_id, received_at, container, cpu, mem_used, mem_limit, net_rx, net_tx, state)
+			VALUES ' . implode(', ', $placeholders)
+		);
+		return $stmt->execute($params);
+	}
+
+	/**
+	 * 查最新一批 Docker 容器明细（详情页 Docker 区用，批次语义同磁盘）
+	 */
+	public function getLatestServerDocker(int $server_id): array
+	{
+		$stmt = $this->pdo->prepare(
+			'SELECT * FROM server_docker
+			WHERE server_id = :server_id AND received_at = (
+				SELECT MAX(received_at) FROM server_docker WHERE server_id = :server_id
+			)
+			ORDER BY container ASC'
+		);
+		$stmt->execute([':server_id' => $server_id]);
+		return $stmt->fetchAll(PDO::FETCH_ASSOC);
+	}
+
+	/**
+	 * 注册一条活跃连接（长轮询接入时调用，PRD §5.2 / D11）
+	 *
+	 * 每 Token（server_id）同时只允许一条活跃连接：先删该服务器的旧行再插
+	 * 新行，旧连接自检 isServerConnectionActive() 发现自己的 connection_id
+	 * 已被顶替，即退出等待、由 agent 侧重连。唯一索引
+	 * idx_server_connections_server_id 在并发双写下兜底。
+	 *
+	 * $connection_id 是 Hub 生成的随机连接标识（不存 Agent Token 明文——
+	 * Token 是高价值凭据，任何表都不落明文）；$ttl 为过期秒数，应略大于
+	 * 长轮询持有上限（开发规范：持有 50s，默认 60s），过期行由
+	 * cleanupServerConnections() 清理，作为「断开即离线」的兜底。
+	 */
+	public function registerServerConnection(int $server_id, string $connection_id, int $ttl = 60): bool
+	{
+		$this->pdo->beginTransaction();
+		try {
+			$stmt = $this->pdo->prepare('DELETE FROM server_connections WHERE server_id = :server_id');
+			$stmt->execute([':server_id' => $server_id]);
+
+			$stmt = $this->pdo->prepare(
+				'INSERT INTO server_connections (server_id, connection_id, registered_at, expires_at)
+				VALUES (:server_id, :connection_id, :registered_at, :expires_at)'
+			);
+			$stmt->execute([
+				':server_id' => $server_id,
+				':connection_id' => $connection_id,
+				':registered_at' => date('Y-m-d H:i:s'),
+				':expires_at' => date('Y-m-d H:i:s', time() + $ttl),
+			]);
+
+			$this->pdo->commit();
+			return true;
+		} catch (Exception $e) {
+			if ($this->pdo->inTransaction()) {
+				$this->pdo->rollBack();
+			}
+			return false;
+		}
+	}
+
+	/**
+	 * 校验连接是否仍然活跃（长轮询循环内每秒自检，PRD §5.2）
+	 *
+	 * 两个失效原因同一出口：被新连接顶替（connection_id 不匹配）或已过期
+	 * （expires_at 早于当前时间）都返回 false，调用方无需区分。
+	 * expires_at 是定长 'Y-m-d H:i:s' 文本，字典序即时间序，可直接比较。
+	 */
+	public function isServerConnectionActive(int $server_id, string $connection_id): bool
+	{
+		$stmt = $this->pdo->prepare(
+			'SELECT 1 FROM server_connections
+			WHERE server_id = :server_id
+			AND connection_id = :connection_id
+			AND expires_at > :now'
+		);
+		$stmt->execute([
+			':server_id' => $server_id,
+			':connection_id' => $connection_id,
+			':now' => date('Y-m-d H:i:s'),
+		]);
+		return (bool)$stmt->fetchColumn();
+	}
+
+	/**
+	 * 清理过期的连接行，返回删除行数
+	 *
+	 * 表只有「每服务器一行」的量级，全表删除的成本可忽略；失败时返回 0
+	 * 不抛异常——清理是尽力而为的后台行为，不该打断调用方主流程。
+	 */
+	public function cleanupServerConnections(): int
+	{
+		try {
+			$stmt = $this->pdo->prepare('DELETE FROM server_connections WHERE expires_at <= :now');
+			$stmt->execute([':now' => date('Y-m-d H:i:s')]);
+			return $stmt->rowCount();
+		} catch (Exception $e) {
+			return 0;
+		}
+	}
+
+	/**
+	 * 30 天明细清理（PRD §5.4 / 决策 D4：到期直接删除，不建聚合表）
+	 *
+	 * 挂在 migrate() 末尾顺带执行，因此必须轻量且幂等：三条 DELETE 各自只做
+	 * 一次 received_at 比较，无命中时成本接近空扫描；任何一张表失败都不
+	 * 影响其它表与迁移主流程（个人数据量下每请求执行的代价可忽略）。
+	 * 表名来自硬编码清单而非用户输入，接收时间走参数绑定。
+	 */
+	public function cleanupServerRetention(int $days = 30): int
+	{
+		$deleted = 0;
+		$cutoff = date('Y-m-d H:i:s', strtotime('-' . max(1, $days) . ' days'));
+
+		foreach (['server_metrics', 'server_disks', 'server_docker'] as $table) {
+			try {
+				$stmt = $this->pdo->prepare("DELETE FROM {$table} WHERE received_at < :cutoff");
+				$stmt->execute([':cutoff' => $cutoff]);
+				$deleted += $stmt->rowCount();
+			} catch (Exception $e) {
+				// 表不存在等异常不应阻断迁移：跳过，下个请求再试
+			}
+		}
+
+		return $deleted;
+	}
+
+	/**
 	 * 状态归一：非法或缺失一律回落到 active，与建表 CHECK 约束保持一致
 	 */
 	private function normalizeAuthorizationStatus($status): string
@@ -1429,6 +2059,33 @@ class Repository
 				return false;
 			}
 
+			// 服务器监控五表（PRD §6）：servers → server_metrics / server_disks /
+			// server_docker → server_connections；与 migrate() 共用同一批幂等
+			// setup 方法，保证新库与老库升级后的结构一致
+			if (!$this->setupServersTable()) {
+				return false;
+			}
+
+			if (!$this->setupServerMetricsTable()) {
+				return false;
+			}
+
+			if (!$this->setupServerDisksTable()) {
+				return false;
+			}
+
+			if (!$this->setupServerDockerTable()) {
+				return false;
+			}
+
+			if (!$this->setupServerConnectionsTable()) {
+				return false;
+			}
+
+			if (!$this->createServerIndexes()) {
+				return false;
+			}
+
 			// 设置表（PRD O-5）：与 migrate() 共用同一建表方法，新旧库一致
 			if (!$this->setupAppSettingsTable()) {
 				return false;
@@ -1485,6 +2142,33 @@ class Repository
 			throw new Exception('Failed to seed account groups');
 		}
 
+		// 服务器监控五表（PRD §6）：老库在这里补齐。setup 方法内部全是
+		// CREATE TABLE IF NOT EXISTS / CREATE INDEX IF NOT EXISTS，可重复执行；
+		// 索引每次请求都走 createServerIndexes() 幂等补齐，与账号库同一模式
+		if (!$this->checkServersTableExists() && !$this->setupServersTable()) {
+			throw new Exception('Failed to set up servers table');
+		}
+
+		if (!$this->checkServerMetricsTableExists() && !$this->setupServerMetricsTable()) {
+			throw new Exception('Failed to set up server_metrics table');
+		}
+
+		if (!$this->checkServerDisksTableExists() && !$this->setupServerDisksTable()) {
+			throw new Exception('Failed to set up server_disks table');
+		}
+
+		if (!$this->checkServerDockerTableExists() && !$this->setupServerDockerTable()) {
+			throw new Exception('Failed to set up server_docker table');
+		}
+
+		if (!$this->checkServerConnectionsTableExists() && !$this->setupServerConnectionsTable()) {
+			throw new Exception('Failed to set up server_connections table');
+		}
+
+		if (!$this->createServerIndexes()) {
+			throw new Exception('Failed to create indexes for server tables');
+		}
+
 		// 标签模块隔离（PRD O-9）：补 module 列、迁移历史数据、更换唯一索引，每一步都幂等
 		if (!$this->migrateTagsModule()) {
 			throw new Exception('Failed to migrate tags module');
@@ -1494,6 +2178,11 @@ class Repository
 		if ($this->checkItemsImageColumnExists()) {
 			$this->dropItemsImageColumn();
 		}
+
+		// 30 天明细清理（PRD §5.4 / 决策 D4）：migrate 每请求都会执行到这里，
+		// 顺带删除 server_metrics / server_disks / server_docker 中过期的行。
+		// 清理方法内部自行兜底异常，失败不影响迁移主流程
+		$this->cleanupServerRetention();
 	}
 
 	/**
@@ -2134,6 +2823,247 @@ class Repository
 	{
 		try {
 			$this->pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS "idx_tags_module_title_parent" ON tags(module COLLATE BINARY ASC, title COLLATE NOCASE ASC, parent COLLATE BINARY ASC);');
+			return true;
+		} catch (Exception $e) {
+			return false;
+		}
+	}
+
+	/**
+	 * 检查 servers 表是否存在（老库升级用）
+	 */
+	public function checkServersTableExists()
+	{
+		try {
+			$stmt = $this->pdo->query("SELECT name FROM sqlite_master WHERE type='table' AND name='servers'");
+			return $stmt->fetch() !== false;
+		} catch (Exception $e) {
+			return false;
+		}
+	}
+
+	/**
+	 * 创建 servers 表（PRD §6）
+	 *
+	 * group_name 存分组名文本（家庭 / 公网 / 公司 / 归档，PRD D10）：分组是固定
+	 * 四项的字典，与账号库的 account_groups（个人 / 工作 / 客户 / 归档）是两套
+	 * 不同取值，不共用表；列名叫 group_name 而非 group，避开 SQL 关键字在部分
+	 * 语句里的歧义。token_hash / token_salt 存 SHA-256(token + salt)，Token
+	 * 明文绝不入库、不写日志（PRD §5.6 / D6 选项 b）。
+	 * 系统信息冗余列（PRD §6 允许）：agent 首次回传或变化时由
+	 * updateServerSystemInfo() 更新，默认空值 / 0 表示「还没上报过」。
+	 */
+	public function setupServersTable()
+	{
+		try {
+			$this->pdo->exec('CREATE TABLE IF NOT EXISTS servers (
+				id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+				name TEXT NOT NULL,
+				note TEXT NOT NULL DEFAULT \'\',
+				group_name TEXT NOT NULL DEFAULT \'家庭\',
+				token_hash TEXT NOT NULL,
+				token_salt TEXT NOT NULL,
+				paused INTEGER NOT NULL DEFAULT(0) CHECK (paused IN (0, 1)),
+				os_name TEXT NOT NULL DEFAULT \'\',
+				kernel TEXT NOT NULL DEFAULT \'\',
+				cpu_cores INTEGER NOT NULL DEFAULT(0),
+				ip_address TEXT NOT NULL DEFAULT \'\',
+				agent_version TEXT NOT NULL DEFAULT \'\',
+				last_report_at TEXT DEFAULT(NULL),
+				created_at TEXT DEFAULT(NULL),
+				updated_at TEXT DEFAULT(NULL)
+			)');
+			return true;
+		} catch (Exception $e) {
+			return false;
+		}
+	}
+
+	/**
+	 * 检查 server_metrics 表是否存在（老库升级用）
+	 */
+	public function checkServerMetricsTableExists()
+	{
+		try {
+			$stmt = $this->pdo->query("SELECT name FROM sqlite_master WHERE type='table' AND name='server_metrics'");
+			return $stmt->fetch() !== false;
+		} catch (Exception $e) {
+			return false;
+		}
+	}
+
+	/**
+	 * 创建 server_metrics 表（PRD §6：CPU / 内存 / Swap / 负载 / 网络 / 开机时长）
+	 *
+	 * 网络列存 agent 侧算好的速率 bytes/s（PRD §5.3），Hub 不做换算；
+	 * cpu / load 用 REAL（百分比与负载带小数），字节数与秒数用 INTEGER。
+	 * 明细保留 30 天，由 cleanupServerRetention() 清理（决策 D4）。
+	 * 声明外键级联仅作语义说明：本项目连接未开启 PRAGMA foreign_keys，
+	 * 实际删除由 deleteServer() 在应用层显式完成。
+	 */
+	public function setupServerMetricsTable()
+	{
+		try {
+			$this->pdo->exec('CREATE TABLE IF NOT EXISTS server_metrics (
+				id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+				server_id INTEGER NOT NULL,
+				received_at TEXT NOT NULL,
+				cpu REAL NOT NULL DEFAULT(0),
+				mem_used INTEGER NOT NULL DEFAULT(0),
+				mem_total INTEGER NOT NULL DEFAULT(0),
+				mem_cached INTEGER NOT NULL DEFAULT(0),
+				swap_used INTEGER NOT NULL DEFAULT(0),
+				swap_total INTEGER NOT NULL DEFAULT(0),
+				load1 REAL NOT NULL DEFAULT(0),
+				load5 REAL NOT NULL DEFAULT(0),
+				load15 REAL NOT NULL DEFAULT(0),
+				net_rx INTEGER NOT NULL DEFAULT(0),
+				net_tx INTEGER NOT NULL DEFAULT(0),
+				uptime INTEGER NOT NULL DEFAULT(0),
+				FOREIGN KEY(server_id) REFERENCES servers(id) ON DELETE CASCADE
+			)');
+			return true;
+		} catch (Exception $e) {
+			return false;
+		}
+	}
+
+	/**
+	 * 检查 server_disks 表是否存在（老库升级用）
+	 */
+	public function checkServerDisksTableExists()
+	{
+		try {
+			$stmt = $this->pdo->query("SELECT name FROM sqlite_master WHERE type='table' AND name='server_disks'");
+			return $stmt->fetch() !== false;
+		} catch (Exception $e) {
+			return false;
+		}
+	}
+
+	/**
+	 * 创建 server_disks 表（PRD §6：每个挂载点一行，used / total 为字节数）
+	 *
+	 * 一次快照写入多行（每挂载点一行），整批共用同一个 received_at，
+	 * 「查最新一批」才能完整还原当次快照。明细保留 30 天，清理口径同
+	 * server_metrics（决策 D4）。
+	 */
+	public function setupServerDisksTable()
+	{
+		try {
+			$this->pdo->exec('CREATE TABLE IF NOT EXISTS server_disks (
+				id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+				server_id INTEGER NOT NULL,
+				received_at TEXT NOT NULL,
+				mount TEXT NOT NULL,
+				used INTEGER NOT NULL DEFAULT(0),
+				total INTEGER NOT NULL DEFAULT(0),
+				FOREIGN KEY(server_id) REFERENCES servers(id) ON DELETE CASCADE
+			)');
+			return true;
+		} catch (Exception $e) {
+			return false;
+		}
+	}
+
+	/**
+	 * 检查 server_docker 表是否存在（老库升级用）
+	 */
+	public function checkServerDockerTableExists()
+	{
+		try {
+			$stmt = $this->pdo->query("SELECT name FROM sqlite_master WHERE type='table' AND name='server_docker'");
+			return $stmt->fetch() !== false;
+		} catch (Exception $e) {
+			return false;
+		}
+	}
+
+	/**
+	 * 创建 server_docker 表（PRD §6：每个容器一行）
+	 *
+	 * CPU 为百分比（不乘核数）、内存为 usage − inactive_file 口径、网络为
+	 * agent 侧算好的速率 bytes/s（口径见 PRD §5.3）。行数 = 天数 × 288 ×
+	 * 容器数，是五张表里涨得最快的，30 天清理必须覆盖本表（PRD §5.4）。
+	 */
+	public function setupServerDockerTable()
+	{
+		try {
+			$this->pdo->exec('CREATE TABLE IF NOT EXISTS server_docker (
+				id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+				server_id INTEGER NOT NULL,
+				received_at TEXT NOT NULL,
+				container TEXT NOT NULL,
+				cpu REAL NOT NULL DEFAULT(0),
+				mem_used INTEGER NOT NULL DEFAULT(0),
+				mem_limit INTEGER NOT NULL DEFAULT(0),
+				net_rx INTEGER NOT NULL DEFAULT(0),
+				net_tx INTEGER NOT NULL DEFAULT(0),
+				state TEXT NOT NULL DEFAULT \'\',
+				FOREIGN KEY(server_id) REFERENCES servers(id) ON DELETE CASCADE
+			)');
+			return true;
+		} catch (Exception $e) {
+			return false;
+		}
+	}
+
+	/**
+	 * 检查 server_connections 表是否存在（老库升级用）
+	 */
+	public function checkServerConnectionsTableExists()
+	{
+		try {
+			$stmt = $this->pdo->query("SELECT name FROM sqlite_master WHERE type='table' AND name='server_connections'");
+			return $stmt->fetch() !== false;
+		} catch (Exception $e) {
+			return false;
+		}
+	}
+
+	/**
+	 * 创建 server_connections 表（长连接注册表，PRD §5.2 / D11）
+	 *
+	 * 每 Token 单活跃连接的 SQLite 过期行方案：新连接注册时挤占同 server_id
+	 * 的旧行，旧连接自检发现被顶替即退出。connection_id 是 Hub 生成的随机
+	 * 连接标识，不存 Agent Token 明文（Token 是高价值凭据，任何表都不落明文）；
+	 * expires_at 为定长 'Y-m-d H:i:s' 文本，字典序即时间序，可直接比较，
+	 * 过期行由 cleanupServerConnections() 清理。
+	 */
+	public function setupServerConnectionsTable()
+	{
+		try {
+			$this->pdo->exec('CREATE TABLE IF NOT EXISTS server_connections (
+				id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+				server_id INTEGER NOT NULL,
+				connection_id TEXT NOT NULL,
+				registered_at TEXT DEFAULT(NULL),
+				expires_at TEXT DEFAULT(NULL),
+				FOREIGN KEY(server_id) REFERENCES servers(id) ON DELETE CASCADE
+			)');
+			return true;
+		} catch (Exception $e) {
+			return false;
+		}
+	}
+
+	/**
+	 * 补齐服务器监控索引（幂等）
+	 *
+	 * 逐个检查后再建，避免每次请求都执行 DDL；模式同 createAccountIndexes()，
+	 * 老库升级时间样会走到这里。明细表统一建 (server_id, received_at) 复合索引：
+	 * 所有查询都带 server_id 等值条件，received_at 同时服务范围过滤与
+	 * MAX(received_at) 批次取回。server_connections 的 server_id 是 UNIQUE
+	 * 索引：从存储层保证每 Token 单活跃连接，与方法层先删旧行形成双保险。
+	 */
+	public function createServerIndexes(): bool
+	{
+		try {
+			foreach (self::SERVER_INDEXES as $name => $sql) {
+				if (!$this->indexExists($name)) {
+					$this->pdo->exec($sql);
+				}
+			}
 			return true;
 		} catch (Exception $e) {
 			return false;

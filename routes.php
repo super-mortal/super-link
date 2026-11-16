@@ -23,9 +23,12 @@ use Controllers\ItemsGetController;
 use Controllers\ItemsTagsUpdateController;
 use Controllers\ItemsUpdateController;
 use Controllers\ServersDeleteController;
+use Controllers\ServersDetailController;
 use Controllers\ServersGetController;
+use Controllers\ServersMetricsController;
 use Controllers\ServersPatchController;
 use Controllers\ServersPostController;
+use Controllers\ServersTokenController;
 use Controllers\SetupDatabaseController;
 use Controllers\SettingsNetworkGetController;
 use Controllers\SettingsNetworkTestController;
@@ -213,6 +216,18 @@ return [
 			],
 			'delete' => [
 				'POST' => ServersDeleteController::class,
+			],
+			// 详情 / 历史指标 / 重置 Token（PRD §6）：id 与 range 均走查询串，
+			// 与 detail= 的 accounts / skills 端点惯例一致；token 为 POST
+			// （写操作，需 CSRF 头），响应含 Token 明文且 no-store
+			'detail' => [
+				'GET' => ServersDetailController::class,
+			],
+			'metrics' => [
+				'GET' => ServersMetricsController::class,
+			],
+			'token' => [
+				'POST' => ServersTokenController::class,
 			],
 		],
 		'setup' => [

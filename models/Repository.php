@@ -1339,6 +1339,30 @@ class Repository
 	}
 
 	/**
+	 * 重置 Agent Token：覆盖 token_hash / token_salt（PRD §5.1 / §5.6 / D6）
+	 *
+	 * 旧哈希被覆盖的瞬间旧 Token 即失效——ServerToken::verify() 是重算哈希
+	 * 后 hash_equals 比对，不存在宽限期，也不需要保留旧哈希。新盐同步轮换，
+	 * 避免「新 Token 配旧盐」这种半更新状态。updated_at 一并刷新：Token
+	 * 轮换是用户对服务器的主动操作，与 PATCH 改名 / 备注同属「编辑时间」语义。
+	 * 明文 Token 不经过本方法（由调用方持有，仅通过重置响应返回一次）。
+	 */
+	public function updateServerToken(int $id, string $token_hash, string $token_salt): bool
+	{
+		$stmt = $this->pdo->prepare(
+			'UPDATE servers
+			SET token_hash = :token_hash, token_salt = :token_salt, updated_at = :updated_at
+			WHERE id = :id'
+		);
+		return $stmt->execute([
+			':token_hash' => $token_hash,
+			':token_salt' => $token_salt,
+			':updated_at' => date('Y-m-d H:i:s'),
+			':id' => $id,
+		]);
+	}
+
+	/**
 	 * 删除服务器及其全部历史数据（PRD §5.1：删除连同历史数据，二次确认在控制器）
 	 *
 	 * SQLite 外键级联依赖 PRAGMA foreign_keys=ON，而本项目连接未开启该 pragma
@@ -1464,6 +1488,57 @@ class Repository
 		);
 		$stmt->execute([':server_id' => $server_id]);
 		return $stmt->fetch(PDO::FETCH_ASSOC);
+	}
+
+	/**
+	 * 按小时聚合指标明细（PRD §6：range=30d 档在 SQL 层聚合后返回）
+	 *
+	 * 决策 D4：不建聚合表、不保留聚合数据，30 天档图表由本查询现算。
+	 * strftime 把 received_at（'Y-m-d H:i:s' 定长文本，字典序即时间序）
+	 * 截到小时桶，标签形如 '2026-11-16 14:00:00'，与 received_at 同格式，
+	 * 前端可直接当时间戳用，图表代码无需区分明细与聚合两种数据来源。
+	 *
+	 * 聚合口径（30 天档看趋势，与 beszel 长档位的平均口径一致）：
+	 * - 速率与用量类（cpu / load1-15 / net_rx / net_tx / mem_used /
+	 *   mem_cached / swap_used）取 AVG：滤掉单点尖峰，曲线更稳；
+	 * - 容量与累计类（mem_total / swap_total / uptime）取 MAX：总量在时段内
+	 *   恒定或缓变，取 MAX 代表该小时的容量基线；uptime 取 MAX 也可避免
+	 *   机器中途重启把均值拉出一个难解释的凹陷。
+	 *
+	 * $range 只接受 30d（控制器白名单已校验）：这里再用 SERVER_METRIC_RANGES
+	 * 收束一次，未知值回落 30d——聚合查询与明细保留期共用同一时间原点。
+	 * 空结果（新添加 / 该时段无数据）返回空数组，由调用方决定点数 0 的表现。
+	 */
+	public function getServerMetricsHourly(int $server_id, string $range = '30d'): array
+	{
+		$since = date('Y-m-d H:i:s', strtotime(self::SERVER_METRIC_RANGES[$range] ?? self::SERVER_METRIC_RANGES['30d']));
+
+		// strftime 的格式串含单引号，SQL 用双引号包裹避免转义；小时桶表达式在
+		// SELECT 与 GROUP BY 中各写一份（SQLite 不允许 GROUP BY 引用 SELECT 别名
+		// 的跨方言保证，显式重复最稳），ORDER BY 引用输出别名 received_at
+		$stmt = $this->pdo->prepare(
+			"SELECT
+				strftime('%Y-%m-%d %H:00:00', received_at) AS received_at,
+				AVG(cpu) AS cpu,
+				AVG(mem_used) AS mem_used,
+				MAX(mem_total) AS mem_total,
+				AVG(mem_cached) AS mem_cached,
+				AVG(swap_used) AS swap_used,
+				MAX(swap_total) AS swap_total,
+				AVG(load1) AS load1,
+				AVG(load5) AS load5,
+				AVG(load15) AS load15,
+				AVG(net_rx) AS net_rx,
+				AVG(net_tx) AS net_tx,
+				MAX(uptime) AS uptime
+			FROM server_metrics
+			WHERE server_id = :server_id AND received_at >= :since
+			GROUP BY strftime('%Y-%m-%d %H:00:00', received_at)
+			ORDER BY received_at ASC"
+		);
+		$stmt->execute([':server_id' => $server_id, ':since' => $since]);
+
+		return $stmt->fetchAll(PDO::FETCH_ASSOC);
 	}
 
 	/**

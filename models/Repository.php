@@ -1222,6 +1222,30 @@ class Repository
 	}
 
 	/**
+	 * 枚举全部服务器的 agent 认证材料（connect / report 的 Token 校验用）
+	 *
+	 * 盐每服务器随机（Utils\ServerToken），Token 校验无法按哈希直接检索，
+	 * 只能取回材料后逐条 verify；个人级 < 20 台（PRD §5.5）全表枚举成本
+	 * 可忽略。除哈希与盐外只取后续流程必需的列：paused 决定 403，
+	 * last_report_at 决定采集指令下发节奏（见 AgentConnectController）。
+	 *
+	 * 表不存在时返回空数组而不抛异常：agent 端点跳过 migrate（task5），
+	 * 数据库尚未初始化（一台服务器都没有）时等价于「查无此服务器」，
+	 * 由调用方走统一的 401 分支，而不是把异常抛给被监控机。
+	 */
+	public function getServerTokenMaterials(): array
+	{
+		try {
+			$stmt = $this->pdo->query(
+				'SELECT id, token_hash, token_salt, paused, last_report_at FROM servers'
+			);
+			return $stmt->fetchAll(PDO::FETCH_ASSOC);
+		} catch (Exception $e) {
+			return [];
+		}
+	}
+
+	/**
 	 * 新增服务器，返回新 id
 	 *
 	 * token_hash / token_salt 由调用方（控制器 + Utils\ServerToken）生成后传入：
@@ -1753,6 +1777,31 @@ class Repository
 			return $stmt->rowCount();
 		} catch (Exception $e) {
 			return 0;
+		}
+	}
+
+	/**
+	 * 删除一条连接注册行（长轮询退出时清理自己，PRD §5.2 / 决策 D11）
+	 *
+	 * 按 (server_id, connection_id) 精确删除：被新连接挤占时自己的行早已
+	 * 被 registerServerConnection() 顶掉，这条 DELETE 是空操作，不会误删
+	 * 挤占者的新行。退出时必须清理——否则注册行要等 expires_at（默认
+	 * 60s）才过期，重连空档里服务器仍显示在线，「断开即离线（秒级）」
+	 * （PRD §5.2）兑现不了。清理失败不抛异常：过期行有 TTL 兜底，
+	 * 退出路径不该被一次清理失败打断。
+	 */
+	public function deleteServerConnection(int $server_id, string $connection_id): bool
+	{
+		try {
+			$stmt = $this->pdo->prepare(
+				'DELETE FROM server_connections WHERE server_id = :server_id AND connection_id = :connection_id'
+			);
+			return $stmt->execute([
+				':server_id' => $server_id,
+				':connection_id' => $connection_id,
+			]);
+		} catch (Exception $e) {
+			return false;
 		}
 	}
 

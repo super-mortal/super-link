@@ -11,7 +11,7 @@ super-link 是自托管的个人数据管理工具，从书签管理起步，通
 - 前端：React 19 + TypeScript 5.8 + Vite 7 SPA（`frontend/`）
 - 后端：PHP 8.4 + Apache，纯 JSON REST API（无服务端渲染 UI）
 - 数据库：SQLite（默认 `storage/link_navigator.db`）
-- 文档：产品需求文档放在 `docs/prd/`；账号库见 [docs/prd/account-vault.md](docs/prd/account-vault.md)，优化项见 [docs/prd/optimization.md](docs/prd/optimization.md)；本地 HTML 高保真交互原型在 `mockups/`（不随仓库提交）
+- 文档：产品需求文档放在 `docs/prd/`；账号库见 [docs/prd/account-vault.md](docs/prd/account-vault.md)，优化项见 [docs/prd/optimization.md](docs/prd/optimization.md)，服务器监控（Hub + Agent，讨论中）见 [docs/prd/server.md](docs/prd/server.md)；本地 HTML 高保真交互原型在 `mockups/`（不随仓库提交）
 
 ## 版本发布记录
 
@@ -23,6 +23,7 @@ super-link 是自托管的个人数据管理工具，从书签管理起步，通
 - 当前版本号写在根目录 `app-info.json` 的 `version` 字段；`GET /api/app-info` 与登录页 / 设置页的版本号都取自此文件，**发版时必须同步更新**。
 - 发布流程：整理版本号与四段式发布说明 → 用户过目确认 → 更新 `app-info.json` 并提交 → 打 `vX.Y.Z` tag 并推送 → CI（`.github/workflows/docker-publish.yml`）自动构建 Docker 镜像推 GHCR 并创建 GitHub Release。未经用户确认不得执行后四步。
 - **Release 说明**：CI 的 `softprops/action-gh-release` 使用 `body_path: docs/releases/<tag>.md` + `generate_release_notes: true`——发布说明写成 `docs/releases/vX.Y.Z.md`（四段式）随 tag 一起提交，Release body 即为该文件内容（后附自动生成的 changelog 链接）；文件缺失时 action 警告并回退为纯自动生成，不会导致发布失败。应用内「查看更新内容」弹窗展示的就是该 body。
+- **发布产物**：当前为 Docker 镜像；服务器模块落地后，同一 tag 的 Release 将同时附带 link-agent 双架构二进制（版本随主版本，决策见 [docs/prd/server.md](docs/prd/server.md) D12）。
 
 ## 协作与发布流程
 

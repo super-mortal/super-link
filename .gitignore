@@ -23,3 +23,6 @@ desktop.ini
 
 # 需求文档与原型（本地资料，不入库）
 mockups/
+
+# 参考项目源码（beszel，本地研究用，不入库）
+/docs/beszel/

@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/sidebar.tsx';
 import * as React from 'react';
 import { observer } from 'mobx-react-lite';
-import { Bookmark, KeyRound, Lock, Sparkles } from 'lucide-react';
+import { Bookmark, KeyRound, Lock, ServerCog, Sparkles } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { StoreContext, VaultStoreContext } from '@/store/storeContext.ts';
 import { useItemListState } from '@/hooks/useItemListState.ts';
@@ -33,6 +33,8 @@ export const ModuleSwitcher = observer(() => {
 
   // 账号库是独立路由：/accounts 列表页与 /accounts/:id 详情页都算账号库路由
   const isAccountsRoute = location.pathname.startsWith('/accounts');
+  // 服务器监控同为独立路由（决策 D5）：/servers 列表页与 /servers/:id 详情页都算服务器路由
+  const isServersRoute = location.pathname.startsWith('/servers');
 
   const moduleCounts: Record<ModuleKey, number> = {
     bookmarks: store.items.length,
@@ -51,8 +53,10 @@ export const ModuleSwitcher = observer(() => {
 
     store.setModule(key);
 
-    if (isAccountsRoute) {
-      // 从账号库返回列表页：不清标签筛选——URL 里的 tag 原样保留，回到列表即恢复原筛选
+    if (isAccountsRoute || isServersRoute) {
+      // 从账号库 / 服务器返回列表页：不清标签筛选——URL 里的 tag 原样保留，回到列表即恢复原筛选。
+      // 必须显式 navigate('/')：只 setModule 的话 URL 仍停在独立路由上，页面不会切换
+      // （「从独立路由点侧栏模块无反应」正是漏了这一步）
       navigate('/');
     } else {
       setTagFilter(null);
@@ -63,9 +67,10 @@ export const ModuleSwitcher = observer(() => {
     }
   };
 
-  // 任意路由下只高亮一个模块：账号库是独立路由，/accounts 下按路径判定；其余路由按 store.module。
-  // 进入账号库只 navigate、不改 store.module，因此从账号库返回列表后原模块高亮自动恢复
-  const activeKey: ModuleKey = isAccountsRoute ? MODULES.accounts.key : store.module;
+  // 任意路由下只高亮一个入口：账号库 / 服务器是独立路由，按路径判定（服务器行自己亮，
+  // 三个模块行都不亮）；其余路由按 store.module。进入独立路由只 navigate、不改 store.module，
+  // 因此从独立路由返回列表后原模块高亮自动恢复
+  const activeKey: ModuleKey | null = isAccountsRoute ? MODULES.accounts.key : isServersRoute ? null : store.module;
   const isModuleActive = (key: ModuleKey) => key === activeKey;
   // 已初始化但锁定时在模块行标锁（PRD §5.1）；未初始化时不标——首次进入应看到「设置主密码」
   const showVaultLock = vault.initialized === true && !vault.unlocked;
@@ -93,6 +98,27 @@ export const ModuleSwitcher = observer(() => {
               </SidebarMenuItem>
             );
           })}
+
+          {/* 服务器监控（决策 D5）：独立路由 + 自建列表外壳，不进模块注册表 MODULE_KEYS，
+              侧栏入口是独立行而非模块配置——图标 / label / 计数 / 点击 / 高亮与模块行同款，
+              但不过 store.module（与账号库入口同款处理，这里复用同一渲染结构） */}
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              tooltip="服务器"
+              onClick={() => {
+                navigate('/servers');
+                if (isMobile) {
+                  toggleSidebar();
+                }
+              }}
+              isActive={isServersRoute}
+              className={'min-w-8 duration-200 ease-linear'}
+            >
+              <ServerCog />
+              <span>服务器</span>
+            </SidebarMenuButton>
+            <SidebarMenuBadge>{store.servers.length}</SidebarMenuBadge>
+          </SidebarMenuItem>
         </SidebarMenu>
       </SidebarGroupContent>
     </SidebarGroup>

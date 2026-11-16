@@ -18,6 +18,8 @@ import { EditItem } from '@/pages/EditItem.tsx';
 import { SkillDetail } from '@/pages/SkillDetail.tsx';
 import { AccountVault } from '@/pages/AccountVault.tsx';
 import { AccountDetail } from '@/pages/AccountDetail.tsx';
+import { ServerListPage } from '@/components/Server/ServerListPage.tsx';
+import { ServerDetailPage } from '@/components/Server/ServerDetailPage.tsx';
 
 const InitMiddleware = observer(() => {
   const store = useContext(StoreContext);
@@ -134,6 +136,10 @@ const router = createBrowserRouter([
                   { path: '/accounts/:accountID', element: <AccountDetail /> },
                 ],
               },
+              // 服务器监控（决策 D5）：独立路由 + 页面自套 Dashboard 外壳，不进模块注册表；
+              // 无敏感凭据、不需要解锁态（PRD §5.5），因此不套 VaultGuard
+              { path: '/servers', element: <ServerListPage /> },
+              { path: '/servers/:serverID', element: <ServerDetailPage /> },
             ],
           },
         ],

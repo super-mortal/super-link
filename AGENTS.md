@@ -94,7 +94,7 @@ composer install --no-dev --optimize-autoloader   # 运行时依赖：guzzlehttp
 ### 前端（`frontend/src/`）
 
 - 入口 `main.tsx` → `App.tsx`（react-router-dom 路由表），全局唯一样式 `index.css`。
-- 路由：`/` 列表、`/login`、`/setup` 及三步引导、`/create-item`、`/edit-item/:itemID`、`/skills/:skillID`、`/accounts` 账号库（锁定/解锁形态由页面自己渲染，守卫只拉元信息）、`*` 404。
+- 路由：`/` 列表、`/login`、`/setup` 及三步引导、`/create-item`、`/edit-item/:itemID`、`/skills/:skillID`、`/accounts` 账号库（锁定/解锁形态由页面自己渲染，守卫只拉元信息）、`/servers` 与 `/servers/:serverID` 服务器监控（独立路由，页面自套 Dashboard 外壳，无解锁态）、`*` 404。
 - 布局：`layouts/Dashboard.tsx`（侧边栏 + 可拖拽 ResizablePanel + 主内容区，挂全局 EditItemDialog/SettingsDialog）、`Auth`、`Onboarding`、`Loading`、`NotFound`。
 - **模块注册表 `lib/modules.ts`**：书签/Skill/账号库的全部差异（label、noun、字段、排序、路由、文案）集中在此。侧边栏、工具栏、三种布局、分页统一消费 `ModuleConfigType`。**新增模块或改模块行为优先改这里，不要在组件里写 if-else 模块判断**。
 - **react-table 列集合 `components/Table/Fields/moduleColumns.tsx`**：三模块共用——固定列（多选 / 标题 / 操作）+ `MODULES[module].fields` 字段列 + 默认隐藏的 `updated_at` 排序数据通道。书签/Skill 的 `ModuleList` 与账号库的 `AccountVaultList` 都从这里取列；账号库字段列定义在 `components/Account/Layouts/AccountTable.tsx`（按字段 key 合并）。
@@ -142,6 +142,7 @@ composer install --no-dev --optimize-autoloader   # 运行时依赖：guzzlehttp
 - **新增前端模块**：`lib/modules.ts` 增加配置并加入 `MODULE_KEYS`；侧栏图标在 `components/Sidebar/ModuleSwitcher.tsx`；数据加载与 API 方法补在 `mainStore`；后端补路由/控制器/存储。
   账号库这类「独立路由 + 需解锁」的模块：侧栏点击走 `navigate` 而不是 `store.setModule`（不过 `ModuleList`，由 `components/Account/AccountVaultList.tsx` 自建列表外壳），侧栏分区按路由切换（`AppSidebar` 里 `isAccountsRoute` 决定渲染 `NavTags` 还是 `NavPlatforms`）。
   账号库列表外壳复用 `Table/Controls` 的视图 / 搜索 / 排序 / 分页 / 批量条与 `moduleColumns.tsx` 列集合，但搜索 / 平台 / 分组 / 排序走服务端（`fetchAccounts` 带参，密文字段不可搜），分页仍在前端（后端返回全量过滤结果）；锁定态不渲染列表。
+  服务器监控（决策 D5）是同类「独立路由」参照，但**不进模块注册表**（无 `ModuleConfigType`）：侧栏入口是 `ModuleSwitcher` 里 `MODULE_KEYS.map` 之外的独立行（点击 `navigate('/servers')`，高亮按 `location.pathname.startsWith('/servers')` 判定；服务器路由下三个模块行均不高亮，点模块行会 `navigate('/')` 回列表——只 `setModule` 不跳转会导致页面无反应）；侧栏分区由 `AppSidebar` 按路由切换为分组筛选（`AppSidebar.tsx` 内 `NavServerGroups`：固定四项 `SERVER_GROUPS` + 后端 `store.serverGroups` 计数，为 0 也展示，无「全部」行，再点取消）；选中分组存 `store.serverListParams.group`，点击即 `fetchServers` 重拉，task11 列表页直接消费；进入服务器路由时由 `AppSidebar` 统一拉一次列表（分组计数同源）；列表 / 详情页在 `components/Server/` 自建外壳（不过 `ModuleList`，无解锁态）。
 - **改模块文案/字段**：只改 `lib/modules.ts`；表格列、字段勾选、卡片/列表门控都由它派生。
 - **改排序**：同时改 `lib/modules.ts` 的 `sorts` 与后端控制器里的排序映射（如 `SkillsGetController::SORTS`）。
 - **改表结构**：`Repository::setupDatabase()` + `Repository::migrate()` 双写，保证新库与老库都能升级。

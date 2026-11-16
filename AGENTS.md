@@ -107,6 +107,7 @@ composer install --no-dev --optimize-autoloader   # 运行时依赖：guzzlehttp
 - 样式：Tailwind CSS v4；设计 token 是 `index.css` 中的 CSS 变量（oklch，`:root`/`.dark` 两套）。**禁止写死颜色，一律用语义变量/类**。
 - 组件库：`components/ui/` 下 37 个 shadcn 风格原语；业务组件按 `Sidebar/`、`Table/`、`EditItem/`、`Settings/` 分目录；三种布局在 `components/Table/Layouts/`。
   账号库组件在 `components/Account/`：`Layouts/`（`AccountList` / `AccountCards` / `AccountTable` 三布局 + 账号字段列定义）、`VaultToolbar`、`VaultLockScreen`、`AccountVaultList`（列表外壳）、`CredentialRow` / `AccountBadges` / `SecretButtons` 等凭据行小组件。
+  服务器监控组件在 `components/Server/`：`ServerListPage` / `ServerToolbar` / `ServerCard` / `ServerEmptyState`（列表页）、`ServerDetailPage`（详情页外壳：30s 轮询 detail + 1h 指标快照取最新点供头部「开机时长 / 负载」，detail 接口不含快照）、`ServerDetailHeader`（名称 / 分组 / 四态徽章 / 系统信息 + 操作区）、`ServerStatusBadge`、`ServerStatusNotice`（离线 / 暂停 / 等待连接提示条）、`ServerBasicInfoCard`（基本信息 + Agent 版本落后提示，D12，与 app-info 的 installed_version 对比）、`ServerInstallCard`（接入信息卡，D6 选项 b：安装命令模板不含明文 Token，Hub 地址取 `window.location.origin`）、`ServerNoteCard`；图表区（task13）与磁盘 / Docker 区（task14）在详情页留有空 section 占位。
   登录页组件在 `components/Auth/`：`LoginIntro`（左侧项目介绍：Logo、slogan、4 条能力点、非安全上下文提示、版本号，PRD O-6；<1024px 隐藏能力点），由 `layouts/Auth.tsx` 两栏外壳以 `intro` prop 承载。
 - 表单：react-hook-form + zod（schema 在 `lib/types.ts`）。
 - 别名：`@` → `src/`（vite.config.ts + tsconfig）。vite 里另有 `@components`、`@assets`、`@api`、`@utils`，但代码中统一用 `@`。

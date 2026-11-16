@@ -1,3 +1,5 @@
+import type { ServerRangeType } from '@/lib/types.ts';
+
 const API_BASE = '/api';
 
 export const API_ENDPOINTS = {
@@ -72,6 +74,20 @@ export const API_ENDPOINTS = {
   },
   setup: {
     setup: `${API_BASE}/setup/database`,
+  },
+  /** 服务器监控（PRD docs/prd/server.md §6）：id 一律查询串传递（Router 无路径参数） */
+  servers: {
+    list: `${API_BASE}/servers`,
+    create: `${API_BASE}/servers`,
+    /** PATCH /api/servers：id 走查询串，改名 / 备注 / 分组 / 暂停恢复字段走请求体 */
+    update: (id: number) => `${API_BASE}/servers?server-id=${id}`,
+    /** POST /api/servers/delete：删除连同历史数据（级联由后端同一事务完成） */
+    delete: (id: number) => `${API_BASE}/servers/delete?server-id=${id}`,
+    detail: (id: number) => `${API_BASE}/servers/detail?server-id=${id}`,
+    /** GET /api/servers/metrics：range 白名单 1h|6h|24h|30d，后端缺省或非法值 400 */
+    metrics: (id: number, range: ServerRangeType) => `${API_BASE}/servers/metrics?server-id=${id}&range=${range}`,
+    /** POST /api/servers/token：重置 Token，旧 Token 立即失效，响应含明文且 no-store */
+    token: (id: number) => `${API_BASE}/servers/token?server-id=${id}`,
   },
   importBookmarks: {
     pocket: `${API_BASE}/import/pocket`,

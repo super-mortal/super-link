@@ -346,3 +346,190 @@ export type NetworkTestResultType = {
   elapsed_ms: number;
   error: string | null;
 };
+
+/* ---------------------------------------------------------------------------
+ * 服务器监控（PRD docs/prd/server.md §5.1 / §5.5 / §6）
+ * 说明：字段与后端 Utils\ServerPayload::formatServer() 及 ServersGet /
+ * ServersDetail / ServersMetrics 三个控制器的 data 数组键名一一对应
+ * （§6 为草案，契约漂移由 task21 双向比对收口）；token_hash / token_salt
+ * 属服务端凭据材料，任何用户态类型都不包含这两列（PRD §5.6 / D6）。
+ * ------------------------------------------------------------------------- */
+
+/**
+ * 连接状态四态（ServerPayload::STATUS_*，PRD §5.1 卡片状态点 / 详情页徽章）：
+ * online 在线（注册表有活跃连接）/ offline 离线（曾回传、当前无连接）/
+ * paused 已暂停（暂停期间不判定离线）/ pending 等待连接（从未回传）
+ */
+export type ServerStatusType = 'online' | 'offline' | 'paused' | 'pending';
+
+/** 分组白名单固定四项（ServerPayload::GROUPS，决策 D10：与账号库分组同一处理方式，不参与权限） */
+export type ServerGroupType = '家庭' | '公网' | '公司' | '归档';
+
+/** 历史指标范围档位（ServersMetricsController::RANGES，PRD §6；30d 为服务端小时聚合） */
+export type ServerRangeType = '1h' | '6h' | '24h' | '30d';
+
+/** 列表排序键（ServersGetController::SORT_KEYS：状态 / 名称 / CPU / 内存，另带分组与时间列） */
+export type ServerSortType =
+  | 'id'
+  | 'name'
+  | 'group'
+  | 'status'
+  | 'cpu'
+  | 'mem'
+  | 'last_report_at'
+  | 'created_at'
+  | 'updated_at';
+
+export type ServerOrderType = 'asc' | 'desc';
+
+/**
+ * 服务器公开字段（ServerPayload::formatServer 白名单）。
+ * 系统信息（os_name / kernel / cpu_cores / ip_address / agent_version）以 servers
+ * 冗余列存储，随基本信息一并返回，不单独拆接口（PRD §6 数据模型）。
+ */
+export type ServerBaseType = {
+  id: number;
+  name: string;
+  note: string;
+  /** 列名叫 group_name（避开 SQL 关键字歧义），对外统一输出 group */
+  group: string;
+  paused: boolean;
+  os_name: string;
+  kernel: string;
+  cpu_cores: number;
+  ip_address: string;
+  agent_version: string;
+  /** 最后回传时间（服务端接收时间，Y-m-d H:i:s）；从未回传为 null */
+  last_report_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+/** 公开字段 + 连接状态：列表 / 详情 / 新增 / 更新响应的 server 基础形态 */
+export type ServerWithStatusType = ServerBaseType & {
+  status: ServerStatusType;
+};
+
+/** 单块磁盘用量（server_disks 最新一批：一次快照每挂载点一行，PRD §5.3） */
+export type ServerDiskType = {
+  mount: string;
+  used: number;
+  total: number;
+};
+
+/**
+ * 最新指标快照（server_metrics 最新一行）。
+ * 单位一律为库内原始单位：字节 / 字节每秒 / 百分比 / 秒，换算与阈值配色在前端做；
+ * null = 从未回传（等待连接），前端据此不渲染指标行（PRD §5.1）。
+ */
+export type ServerMetricsSnapshotType = {
+  cpu: number;
+  mem_used: number;
+  mem_total: number;
+  mem_cached: number;
+  swap_used: number;
+  swap_total: number;
+  load1: number;
+  load5: number;
+  load15: number;
+  /** 网络速率，字节每秒（agent 侧算好回传） */
+  net_rx: number;
+  net_tx: number;
+  /** 开机时长，秒 */
+  uptime: number;
+  received_at: string;
+};
+
+/**
+ * 列表项（ServersGetController::formatServerWithSummary）：
+ * 公开字段 + 状态 + 最新快照摘要 + 最新一批磁盘 + 容器计数（明细在详情页）。
+ */
+export type ServerItemType = ServerWithStatusType & {
+  latest: ServerMetricsSnapshotType | null;
+  disks: ServerDiskType[];
+  docker_count: number;
+};
+
+/** Docker 容器（server_docker 最新一批，PRD §5.3；Docker 不可用或没有容器时为空数组） */
+export type ServerDockerType = {
+  container: string;
+  cpu: number;
+  mem_used: number;
+  mem_limit: number;
+  net_rx: number;
+  net_tx: number;
+  state: string;
+  received_at: string;
+};
+
+/** 服务器详情（GET /api/servers/detail 的 data） */
+export type ServerDetailType = {
+  server: ServerWithStatusType;
+  docker: ServerDockerType[];
+};
+
+/**
+ * 历史指标单点（ServersMetricsController::formatPoint）。
+ * 明细点与 30d 小时聚合桶字段完全同构（聚合桶 received_at 形如 '2026-11-16 14:00:00'），
+ * 图表代码无需区分来源（决策 D4：不建聚合表）。
+ */
+export type ServerMetricsPointType = ServerMetricsSnapshotType;
+
+/** 历史指标序列（GET /api/servers/metrics 的 data）；空结果（等待连接 / 时段无数据）为 total=0 */
+export type ServerMetricsSeriesType = {
+  server_id: number;
+  range: ServerRangeType;
+  points: ServerMetricsPointType[];
+  total: number;
+};
+
+/** 侧栏分组计数：四项分组恒定出现（为 0 也返回），按搜索命中全集统计，不受分组筛选影响（PRD §5.5） */
+export type ServerGroupCountsType = Partial<Record<ServerGroupType, number>>;
+
+/**
+ * 列表查询参数（GET /api/servers）。
+ * 可下推后端（与账号库 fetchAccounts 带参一致），也可作为客户端筛选排序的条件：
+ * 搜索覆盖名称 / 备注 / IP，排序支持状态 / 名称 / CPU / 内存（PRD §5.5）。
+ */
+export type ServerListParamsType = {
+  search?: string;
+  group?: ServerGroupType | null;
+  sort?: ServerSortType;
+  order?: ServerOrderType;
+};
+
+/** 新建服务器（POST /api/servers，ServerPayload::parseCreate） */
+export type ServerInputType = {
+  name: string;
+  note?: string;
+  /** 缺省「家庭」（后端同款默认值，PRD §5.1） */
+  group?: ServerGroupType;
+};
+
+/**
+ * 更新服务器（PATCH /api/servers，ServerPayload::parsePatch）。
+ * PATCH 语义：未传字段保持原值——只想改备注不会把分组冲掉、把暂停的服务器恢复；
+ * paused 显式传空会被后端拒绝（暂停 / 恢复是二值动作，必须给明确值）。
+ */
+export type ServerUpdateType = {
+  name?: string;
+  note?: string;
+  group?: ServerGroupType;
+  paused?: boolean;
+};
+
+/**
+ * Token 响应（POST /api/servers 与 POST /api/servers/token 共用同形）。
+ * token 明文只在一次响应里完整出现，不落库、不写日志（PRD §5.6 / D6 选项 b），
+ * 丢失只能重置；install_command 由后端 Utils\ServerInstallCommand 组装，
+ * 弹窗直接把含 Token 的一行命令给用户一键复制。
+ */
+export type ServerTokenResponseType = {
+  token: string;
+  install_command: string;
+};
+
+/** 新增响应（POST /api/servers 的 data）：新服务器 agent 尚未连接，status 必为 pending */
+export type ServerCreateResultType = ServerTokenResponseType & {
+  server: ServerWithStatusType;
+};

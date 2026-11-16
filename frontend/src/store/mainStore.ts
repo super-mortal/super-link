@@ -16,6 +16,19 @@ import {
   ModuleKey,
   NetworkSettingsType,
   NetworkTestResultType,
+  ServerCreateResultType,
+  ServerDetailType,
+  ServerGroupCountsType,
+  ServerInputType,
+  ServerItemType,
+  ServerListParamsType,
+  ServerMetricsSeriesType,
+  ServerOrderType,
+  ServerRangeType,
+  ServerSortType,
+  ServerTokenResponseType,
+  ServerUpdateType,
+  ServerWithStatusType,
   SkillDetailType,
   SkillType,
   SkillUpdateType,
@@ -30,6 +43,7 @@ import {
   VaultMetaType,
 } from '@/lib/types.ts';
 import { DEFAULT_MODULE } from '@/lib/modules.ts';
+import { SERVER_STATUS_ORDER } from '@/lib/serverFormat.ts';
 import { getCookie } from '@/lib/utils.ts';
 import { preferencesStore } from './preferencesStore.ts';
 
@@ -92,6 +106,27 @@ class MainStore {
   currentAccount: AccountDetailType | null = null;
   /** 最近一次列表查询参数：写操作后按同一条件刷新，避免筛选 / 排序被重置 */
   accountListParams: AccountListParamsType = {};
+
+  /* ----------------------------- 服务器监控（PRD §5.1 / §5.5，模块隔离） ----------------------------- */
+  /**
+   * 服务器列表数据：独立集合，与书签 / Skill / 账号库完全隔离（PRD §5.1.1 同款模块隔离）。
+   * 后端返回搜索 / 分组 / 排序条件下的全量结果，分页由前端做（与账号库一致）。
+   */
+  servers: ServerItemType[] = [];
+  /** 列表查询总数（后端返回的 total），随 fetchServers 更新 */
+  serverTotal = 0;
+  /** 侧栏分组计数：四项分组恒定出现（为 0 也返回），按搜索命中全集统计，不受分组筛选影响 */
+  serverGroups: ServerGroupCountsType = {};
+  /** 最近一次拉取的服务器详情（含最新 Docker 快照）；仅内存态，不进 URL / 存储 */
+  currentServer: ServerDetailType | null = null;
+  /** 最近一次历史指标序列（详情页图表用）；仅内存态 */
+  serverMetrics: ServerMetricsSeriesType | null = null;
+  /** 加载态三者相互独立：详情页指标 30s 轮询不应让整页转圈 */
+  serversLoading = false;
+  serverDetailLoading = false;
+  serverMetricsLoading = false;
+  /** 最近一次列表查询参数：写操作后按同一条件刷新，避免筛选 / 排序被重置（同 accountListParams） */
+  serverListParams: ServerListParamsType = {};
 
   constructor(prefStore) {
     this.prefStore = prefStore;
@@ -809,6 +844,244 @@ class MainStore {
     );
 
     return response !== null;
+  };
+
+  /* ----------------------------- 服务器监控数据（PRD §6 用户态接口） ----------------------------- */
+
+  setServers = (val: ServerItemType[]) => {
+    this.servers = val;
+  };
+
+  /**
+   * 服务器列表（GET /api/servers）。
+   *
+   * 不传参数时后端返回全量；显式传入 search / group / sort / order 时下推后端
+   * （与账号库 fetchAccounts 带参一致——后端在内存里完成筛选与排序后返回全量结果，
+   * 分页由前端做）。分组计数按搜索命中全集统计，不受分组筛选影响（后端口径），
+   * 侧栏因此能在筛选某一分组时仍看到其他分组的计数。
+   */
+  fetchServers = async (params: ServerListParamsType = {}): Promise<ServerItemType[] | null> => {
+    const query = new URLSearchParams();
+
+    if (params.search) {
+      query.set('search', params.search);
+    }
+    if (params.group) {
+      query.set('group', params.group);
+    }
+    if (params.sort) {
+      query.set('sort', params.sort);
+    }
+    if (params.order) {
+      query.set('order', params.order);
+    }
+
+    const queryString = query.toString();
+    const endpoint = queryString === '' ? API_ENDPOINTS.servers.list : `${API_ENDPOINTS.servers.list}?${queryString}`;
+    // 先记下查询条件：后续写操作按同一条件刷新，避免用户眼前的筛选 / 排序被重置
+    this.serverListParams = params;
+    this.serversLoading = true;
+
+    try {
+      const response = await this.runRequest(endpoint, 'GET', {}, '获取服务器列表失败');
+
+      if (response === null) {
+        return null;
+      }
+
+      const servers = (response?.data?.servers ?? []) as ServerItemType[];
+      this.setServers(servers);
+      this.serverTotal = Number(response?.data?.total ?? servers.length);
+      this.serverGroups = (response?.data?.groups ?? {}) as ServerGroupCountsType;
+
+      return servers;
+    } finally {
+      this.serversLoading = false;
+    }
+  };
+
+  /**
+   * 客户端筛选排序（PRD §5.5 工具栏 / 侧栏）：在已加载的全量数据上本地完成，
+   * 与账号库平台 / 分组过滤同一处理方式——同等条件也可下推后端（fetchServers 带参），
+   * 这里提供本地版本供即时过滤（搜索输入不必每敲一个字都发一次请求）。
+   *
+   * 口径与后端 ServersGetController::sortServers 逐条对齐：
+   * - 搜索覆盖名称 / 备注 / IP，不区分大小写；
+   * - 状态排序「在线优先」：online > offline > pending > paused，缺省 asc；
+   * - CPU / 内存无快照数据（等待连接）按 -1 参与比较，排在有数据的之后；
+   * - 同键时按 id 倒序兜底，保证列表刷新时顺序稳定、可复现。
+   */
+  filterServers = (params: ServerListParamsType = {}): ServerItemType[] => {
+    const keyword = (params.search ?? '').trim().toLowerCase();
+
+    const filtered = this.servers.filter((server) => {
+      if (params.group && server.group !== params.group) {
+        return false;
+      }
+      if (keyword === '') {
+        return true;
+      }
+      return (
+        server.name.toLowerCase().includes(keyword) ||
+        server.note.toLowerCase().includes(keyword) ||
+        server.ip_address.toLowerCase().includes(keyword)
+      );
+    });
+
+    const sort: ServerSortType = params.sort ?? 'id';
+    // 缺省方向：状态按「在线优先」升序，其余倒序（与后端 parseSort 一致）
+    const order: ServerOrderType = params.order ?? (sort === 'status' ? 'asc' : 'desc');
+    const direction = order === 'asc' ? 1 : -1;
+
+    return filtered.sort((left, right) => {
+      let result: number;
+      switch (sort) {
+        case 'name':
+          result = left.name.localeCompare(right.name, undefined, { sensitivity: 'base' });
+          break;
+        case 'group':
+          result = left.group.localeCompare(right.group, undefined, { sensitivity: 'base' });
+          break;
+        case 'status':
+          result = SERVER_STATUS_ORDER.indexOf(left.status) - SERVER_STATUS_ORDER.indexOf(right.status);
+          break;
+        case 'cpu':
+          result = (left.latest?.cpu ?? -1) - (right.latest?.cpu ?? -1);
+          break;
+        case 'mem':
+          result = (left.latest?.mem_used ?? -1) - (right.latest?.mem_used ?? -1);
+          break;
+        case 'last_report_at':
+          result = String(left.last_report_at ?? '').localeCompare(String(right.last_report_at ?? ''));
+          break;
+        case 'created_at':
+          result = String(left.created_at ?? '').localeCompare(String(right.created_at ?? ''));
+          break;
+        case 'updated_at':
+          result = String(left.updated_at ?? '').localeCompare(String(right.updated_at ?? ''));
+          break;
+        default:
+          result = left.id - right.id;
+          break;
+      }
+
+      // 同键按 id 倒序兜底（新服务器在前），与后端一致
+      return result === 0 ? right.id - left.id : direction * result;
+    });
+  };
+
+  /**
+   * 新增服务器（POST /api/servers）。
+   * 返回体含 Token 明文与安装命令——仅此一次完整展示（PRD §5.6 / D6：丢失只能重置），
+   * 调用方（添加弹窗）负责展示与复制，**不得**写入任何持久化存储。
+   */
+  createServer = async (payload: ServerInputType): Promise<ServerCreateResultType | null> => {
+    const response = await this.runRequest(API_ENDPOINTS.servers.create, 'POST', payload, '创建服务器失败');
+
+    if (response === null) {
+      return null;
+    }
+
+    await this.fetchServers(this.serverListParams);
+
+    return {
+      server: response?.data?.server as ServerWithStatusType,
+      token: response?.data?.token as string,
+      install_command: response?.data?.install_command as string,
+    };
+  };
+
+  /**
+   * 更新服务器（PATCH 部分更新：未传字段保持原值，后端 parsePatch 语义）。
+   * id 走查询串（框架会把 $_GET 合并进入参），字段走请求体。
+   * 成功后按当前查询条件刷新列表：暂停 / 恢复会改变状态判定与排序位置，
+   * 与账号库 updateAccount 同一处理方式。
+   */
+  updateServer = async (id: number, payload: ServerUpdateType): Promise<boolean> => {
+    const response = await this.runRequest(API_ENDPOINTS.servers.update(id), 'PATCH', payload, '更新服务器失败');
+
+    if (response === null) {
+      return false;
+    }
+
+    await this.fetchServers(this.serverListParams);
+
+    return true;
+  };
+
+  /** 删除服务器（POST /api/servers/delete）：连同历史数据一并级联删除，二次确认由弹窗完成 */
+  deleteServer = async (id: number): Promise<boolean> => {
+    const response = await this.runRequest(API_ENDPOINTS.servers.delete(id), 'POST', {}, '删除服务器失败');
+
+    if (response === null) {
+      return false;
+    }
+
+    await this.fetchServers(this.serverListParams);
+
+    return true;
+  };
+
+  /** 服务器详情：基本信息 + 系统信息 + 连接状态 + 最新 Docker 快照（GET /api/servers/detail） */
+  fetchServerDetail = async (id: number): Promise<ServerDetailType | null> => {
+    this.serverDetailLoading = true;
+
+    try {
+      const response = await this.runRequest(API_ENDPOINTS.servers.detail(id), 'GET', {}, '获取服务器详情失败');
+
+      if (response === null) {
+        return null;
+      }
+
+      const detail = (response?.data ?? null) as ServerDetailType | null;
+      this.currentServer = detail;
+
+      return detail;
+    } finally {
+      this.serverDetailLoading = false;
+    }
+  };
+
+  /**
+   * 历史指标序列（GET /api/servers/metrics）。
+   * range 必传且限白名单四档（后端对缺失 / 非法值一律 400：静默回落默认档会让图表
+   * 展示错范围的数据，比报错更难排查）；30d 档为服务端小时聚合，与明细档字段同构。
+   */
+  fetchServerMetrics = async (id: number, range: ServerRangeType): Promise<ServerMetricsSeriesType | null> => {
+    this.serverMetricsLoading = true;
+
+    try {
+      const response = await this.runRequest(API_ENDPOINTS.servers.metrics(id, range), 'GET', {}, '获取服务器指标失败');
+
+      if (response === null) {
+        return null;
+      }
+
+      const series = (response?.data ?? null) as ServerMetricsSeriesType | null;
+      this.serverMetrics = series;
+
+      return series;
+    } finally {
+      this.serverMetricsLoading = false;
+    }
+  };
+
+  /**
+   * 重置 Agent Token（POST /api/servers/token）：旧 Token 立即失效，新明文仅此次返回。
+   * 响应体含凭据材料，后端已置 no-store；返回值只进调用方（重置弹窗）的内存态，
+   * 不落入本 store 的 observable，更不得写入 localStorage 等持久化存储。
+   */
+  resetServerToken = async (id: number): Promise<ServerTokenResponseType | null> => {
+    const response = await this.runRequest(API_ENDPOINTS.servers.token(id), 'POST', {}, '重置 Token 失败');
+
+    if (response === null) {
+      return null;
+    }
+
+    return {
+      token: response?.data?.token as string,
+      install_command: response?.data?.install_command as string,
+    };
   };
 
   getUser = async (noErrorEmit: boolean = false) => {

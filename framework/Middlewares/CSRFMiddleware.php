@@ -2,6 +2,9 @@
 
 namespace Framework\Middlewares;
 
+use Controllers\AgentConnectController;
+use Controllers\AgentReportController;
+use Controllers\InstallAgentController;
 use Framework\CSRFProtection;
 use Framework\Exceptions\ForbiddenException;
 
@@ -9,6 +12,12 @@ class CSRFMiddleware extends MiddlewareAbstract
 {
 
 	protected array $skipped_routes = [
+		// agent 态端点（PRD docs/prd/server.md §5.6）：agent 请求不带浏览器
+		// 会话 cookie，也没有 CSRF token，写操作（report）必须显式豁免；
+		// connect 与 install-agent 虽是 GET 天然跳过，仍显式注册保持名单完整
+		AgentConnectController::class,
+		AgentReportController::class,
+		InstallAgentController::class,
 	];
 
 	public function handle()

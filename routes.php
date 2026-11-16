@@ -8,6 +8,8 @@ use Controllers\AccountsDeleteController;
 use Controllers\AccountsDetailGetController;
 use Controllers\AccountsGetController;
 use Controllers\AccountsUpdateController;
+use Controllers\AgentConnectController;
+use Controllers\AgentReportController;
 use Controllers\AppInfoController;
 use Controllers\AppUpdateController;
 use Controllers\AuthLoginController;
@@ -16,6 +18,7 @@ use Controllers\ExportDataController;
 use Controllers\ImportBookmarksController;
 use Controllers\ImportDataController;
 use Controllers\ImportPocketController;
+use Controllers\InstallAgentController;
 use Controllers\ItemsCreateController;
 use Controllers\ItemsDeleteController;
 use Controllers\ItemsFetchMetadataController;
@@ -205,9 +208,9 @@ return [
 		// 服务器监控（PRD docs/prd/server.md）：用户态管理接口（会话认证）。
 		// 列表 / 新增 / 更新挂在 /api/servers，删除走 /api/servers/delete（POST，与
 		// items / accounts / skills 的删除端点一致）；id 一律查询串或 body 传递
-		// （Router 无路径参数，PRD §6 已按该惯例定稿）。agent 态端点
-		// （/api/agent/connect、/api/agent/report、/content/install-agent）在后续
-		// 任务注册，届时需同步加入认证与 CSRF 跳过名单
+		// （Router 无路径参数，PRD §6 已按该惯例定稿）。agent 态端点见下方
+		// agent 分组与顶层 content 键，均已加入认证 / CSRF / session / migrate
+		// 跳过名单
 		'servers' => [
 			'/' => [
 				'GET' => ServersGetController::class,
@@ -228,6 +231,19 @@ return [
 			],
 			'token' => [
 				'POST' => ServersTokenController::class,
+			],
+		],
+		// agent 态端点（PRD docs/prd/server.md §5.2 / §5.6）：被监控机调用，
+		// 凭 X-Agent-Token 认证。connect 为长轮询（请求保持数十秒，Hub 经此
+		// 下发采集指令），report 回传快照。两者均已加入 bootstrap 的 session
+		// 跳过、DatabaseMigrations 的 migrate 跳过，以及认证 / CSRF 中间件
+		// 豁免名单（类文件由后续任务创建，::class 不会触发 autoload）
+		'agent' => [
+			'connect' => [
+				'GET' => AgentConnectController::class,
+			],
+			'report' => [
+				'POST' => AgentReportController::class,
 			],
 		],
 		'setup' => [
@@ -263,6 +279,15 @@ return [
 			'update' => [
 				'POST' => AppUpdateController::class,
 			],
+		],
+	],
+	// 安装脚本文本路由（PRD docs/prd/server.md §5.2 / §6）：Apache 把 /content/*
+	// 与 /api/* 一并转发到 index.php，SCRIPT_URL 原样参与路由匹配，所以这是
+	// 顶层键而非 api 子键。被监控机 curl 下载安装脚本、未登录也要可访问，
+	// 故已加入认证 / CSRF 跳过名单与 bootstrap 的 session 跳过
+	'content' => [
+		'install-agent' => [
+			'GET' => InstallAgentController::class,
 		],
 	],
 ];

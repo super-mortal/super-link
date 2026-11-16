@@ -2,8 +2,11 @@
 
 namespace Framework\Middlewares;
 
+use Controllers\AgentConnectController;
+use Controllers\AgentReportController;
 use Controllers\AppInfoController;
 use Controllers\AuthLoginController;
+use Controllers\InstallAgentController;
 use Framework\Exceptions\DatabaseNotFound;
 use Framework\Exceptions\UnauthorizedException;
 use Framework\ServiceContainer;
@@ -19,6 +22,11 @@ class AuthenticationMiddleware extends MiddlewareAbstract
 		// 因此 app-info 必须允许未登录读取。该接口只返回本地版本号与
 		// GitHub Release 公开信息，不含任何用户数据
 		AppInfoController::class,
+		// agent 态端点（PRD docs/prd/server.md §5.6）：被监控机没有用户会话，
+		// 凭 X-Agent-Token 认证，Token 校验在控制器内完成
+		AgentConnectController::class,
+		AgentReportController::class,
+		InstallAgentController::class,
 	];
 
 	public function handle()

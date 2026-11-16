@@ -1421,11 +1421,13 @@ class Repository
 	 * 写入一条指标明细（agent 回传全量快照时调用，PRD §5.3）
 	 *
 	 * received_at 一律取服务端接收时间：客户端即使带了时间戳也忽略，
-	 * 防止脏数据打乱 30 天清理边界与图表排序（PRD §5.2）。
+	 * 防止脏数据打乱 30 天清理边界与图表排序（PRD §5.2）。快照事务写入
+	 * （insertServerSnapshot）会传入统一的服务端接收时间，保证同一快照的
+	 * 各表时间戳一致；单独调用时缺省取当前时间。
 	 * 数值范围校验（CPU 0–100、内存不大于总量等，PRD §5.6）由调用方完成，
 	 * 本方法只负责落库。
 	 */
-	public function insertServerMetrics(int $server_id, array $metrics): bool
+	public function insertServerMetrics(int $server_id, array $metrics, ?string $received_at = null): bool
 	{
 		$stmt = $this->pdo->prepare(
 			'INSERT INTO server_metrics
@@ -1435,7 +1437,7 @@ class Repository
 		);
 		return $stmt->execute([
 			':server_id' => $server_id,
-			':received_at' => date('Y-m-d H:i:s'),
+			':received_at' => $received_at ?? date('Y-m-d H:i:s'),
 			':cpu' => (float)($metrics['cpu'] ?? 0),
 			':mem_used' => (int)($metrics['mem_used'] ?? 0),
 			':mem_total' => (int)($metrics['mem_total'] ?? 0),
@@ -1569,16 +1571,18 @@ class Repository
 	 * 批量写入磁盘明细（一次快照的每个挂载点一行，PRD §5.3）
 	 *
 	 * received_at 整批取同一个服务端时间：同一快照的各行时间必须一致，
-	 * 「查最新一批」才能按 received_at 完整取回。空数组直接返回 true
-	 * （无磁盘数据 / 采集失败的场景，不影响其余指标回传）。
+	 * 「查最新一批」才能按 received_at 完整取回。$received_at 由
+	 * insertServerSnapshot 传入统一的服务端接收时间；单独调用时缺省取当前
+	 * 时间。空数组直接返回 true（无磁盘数据 / 采集失败的场景，不影响其余
+	 * 指标回传）。
 	 */
-	public function insertServerDisks(int $server_id, array $disks): bool
+	public function insertServerDisks(int $server_id, array $disks, ?string $received_at = null): bool
 	{
 		if (empty($disks)) {
 			return true;
 		}
 
-		$received_at = date('Y-m-d H:i:s');
+		$received_at = $received_at ?? date('Y-m-d H:i:s');
 		$placeholders = [];
 		$params = [];
 		foreach ($disks as $disk) {
@@ -1625,15 +1629,16 @@ class Repository
 	 *
 	 * 口径：CPU 为百分比（不乘核数）、内存为 usage − inactive_file、网络为
 	 * agent 侧算好的速率 bytes/s。Docker 不可用时传空数组即可，不影响其余
-	 * 指标回传（PRD §5.3）。received_at 整批一致，语义同磁盘。
+	 * 指标回传（PRD §5.3）。received_at 整批一致，语义同磁盘；
+	 * $received_at 由 insertServerSnapshot 传入统一的服务端接收时间。
 	 */
-	public function insertServerDocker(int $server_id, array $containers): bool
+	public function insertServerDocker(int $server_id, array $containers, ?string $received_at = null): bool
 	{
 		if (empty($containers)) {
 			return true;
 		}
 
-		$received_at = date('Y-m-d H:i:s');
+		$received_at = $received_at ?? date('Y-m-d H:i:s');
 		$placeholders = [];
 		$params = [];
 		foreach ($containers as $container) {
@@ -1658,6 +1663,47 @@ class Repository
 			VALUES ' . implode(', ', $placeholders)
 		);
 		return $stmt->execute($params);
+	}
+
+	/**
+	 * 一次回传快照的完整落库（agent report 调用，PRD §5.3 / §5.2）
+	 *
+	 * 指标 1 行 + 磁盘 N 行 + Docker N 行 + servers.last_report_at 与系统信息
+	 * 冗余列，全部在同一事务内。received_at 由本方法统一取一次服务端时间传给
+	 * 三个 insert：同一快照的各表各行必须带同一时间戳，「查最新一批」才能按
+	 * received_at 完整取回；last_report_at 与 received_at 同源——数据时间戳
+	 * 一律以 Hub 接收时间为准，不信任客户端时钟（PRD §5.2）。
+	 *
+	 * 任一写失败整体回滚：半份快照（有指标无磁盘）会让详情页把上一批磁盘与
+	 * 新指标混在一起展示，比丢一整包更糟；回滚后库内停留在上一份完整快照，
+	 * agent 下一采集周期自然重传。PDO 为 ERRMODE_EXCEPTION（见 init.php），
+	 * 写失败抛异常即进 catch 回滚，无需逐个检查返回值。
+	 *
+	 * $metrics / $disks / $containers 的结构与字段校验（白名单、范围、结构
+	 * 越界，PRD §5.6）由调用方（Controllers\AgentReportController）完成，
+	 * 本方法只负责落库；$system_info 为空数组时只刷新 last_report_at
+	 * （updateServerSystemInfo 对空数据是 no-op）。
+	 */
+	public function insertServerSnapshot(int $server_id, array $metrics, array $disks, array $containers, array $system_info): bool
+	{
+		$this->pdo->beginTransaction();
+		try {
+			$received_at = date('Y-m-d H:i:s');
+
+			$this->insertServerMetrics($server_id, $metrics, $received_at);
+			$this->insertServerDisks($server_id, $disks, $received_at);
+			$this->insertServerDocker($server_id, $containers, $received_at);
+			$this->updateServerLastReportAt($server_id);
+			$this->updateServerSystemInfo($server_id, $system_info);
+
+			$this->pdo->commit();
+			return true;
+		} catch (Exception $e) {
+			if ($this->pdo->inTransaction()) {
+				$this->pdo->rollBack();
+			}
+			return false;
+		}
 	}
 
 	/**

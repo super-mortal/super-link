@@ -6,7 +6,7 @@ use Framework\ControllerInterface;
 use Framework\Responses\ResponseInterface;
 use Framework\ServiceContainer;
 use Models\Repository;
-use Utils\ServerToken;
+use Utils\AgentAuth;
 use function Framework\data;
 
 /**
@@ -38,8 +38,9 @@ use function Framework\data;
  *    退避重连，避免新旧两个 agent 互相挤占的热循环。
  *
  * ── 非 200 ───────────────────────────────────────────────────────────
- * 401：Token 无效或服务器不存在——两者响应体逐字节一致，agent 无法也无需
- *      区分；停止重连并记录日志（task19）。
+ * 401：Token 无效或服务器不存在——两者响应体逐字节一致（与 report 共用
+ *      Utils\AgentAuth，两端点同一实现），agent 无法也无需区分；停止重连
+ *      并记录日志（task19）。
  * 403：服务器已暂停（paused=1）——agent 保持守护、按退避间隔重试即可，
  *      用户恢复后自然接入；暂停期间 Hub 不做离线判定（PRD §5.1）。
  *
@@ -73,23 +74,6 @@ class AgentConnectController implements ControllerInterface
 	 */
 	private const CONNECTION_TTL = 60;
 
-	/** 401 消息：无效 Token 与不存在服务器共用同一常量，保证响应体逐字节一致（PRD §5.6） */
-	private const UNAUTHORIZED_MESSAGE = 'Agent 认证失败';
-
-	/**
-	 * 拉平耗时用的虚拟校验材料（PRD §5.6）
-	 *
-	 * 「无效 Token」与「服务器不存在」必须走同一分支且耗时一致。本端点的
-	 * 认证是「Token 对全部服务器逐条 verify」（盐每服务器随机，无法按哈希
-	 * 检索），两种失败场景天然就是同一条代码路径；但库里一台服务器都没有
-	 * 时一次真实哈希都不会发生，这里用一对固定值补一次完整的 SHA-256 +
-	 * hash_equals，保证任何失败路径都实打实做过至少一次哈希运算。固定值
-	 * 非机密，唯一目的是消耗与真实校验同等的 CPU。
-	 */
-	private const DUMMY_TOKEN = 'slk_dummy_token_for_timing_equalization';
-	private const DUMMY_SALT = 'slk_dummy_salt_for_timing_equalization';
-	private const DUMMY_HASH = '5f2b8a1c9e4d7f306a2b9c8d5e1f4a7b3c6d9e2f5a8b1c4d7e0f3a6b9c2d5e8f';
-
 	/**
 	 * GET /api/agent/connect
 	 *
@@ -105,9 +89,11 @@ class AgentConnectController implements ControllerInterface
 
 		$token = trim((string)($_SERVER['HTTP_X_AGENT_TOKEN'] ?? ''));
 
-		$server = $this->authenticate($repository, $token);
+		// 认证与 401 拉平逻辑与 report 共用 Utils\AgentAuth（PRD §5.6：两端点
+		// 的失败响应逐字节一致，防枚举）
+		$server = AgentAuth::authenticate($repository, $token);
 		if (null === $server) {
-			return $this->unauthorized();
+			return AgentAuth::unauthorized();
 		}
 
 		$server_id = (int)$server['id'];
@@ -194,47 +180,6 @@ class AgentConnectController implements ControllerInterface
 				// 流式长轮询：状态码 / 头部 / 响应体均由控制器直接输出
 			}
 		};
-	}
-
-	/**
-	 * Token 校验：枚举全部服务器逐条 verify（Utils\ServerToken）
-	 *
-	 * 盐每服务器随机，无法按 Token 哈希直接检索，只能全量枚举后逐条比对；
-	 * 个人级 < 20 台（PRD §5.5）成本可忽略。命中返回该服务器的行（含
-	 * paused / last_report_at，供后续流程使用），未命中返回 null——「无效
-	 * Token」与「服务器不存在」在此合流，由 unauthorized() 给出逐字节
-	 * 一致的 401（PRD §5.6：响应体与耗时都要一致，防枚举）。
-	 */
-	private function authenticate(Repository $repository, string $token): ?array
-	{
-		foreach ($repository->getServerTokenMaterials() as $candidate) {
-			if (ServerToken::verify($token, (string)$candidate['token_hash'], (string)$candidate['token_salt'])) {
-				return $candidate;
-			}
-		}
-
-		// 未命中：补一次虚拟哈希比对拉平耗时（固定值材料见类常量注释），
-		// 让空库 / 有库两种部署下的失败路径都有同等的哈希运算量
-		ServerToken::verify(self::DUMMY_TOKEN, self::DUMMY_HASH, self::DUMMY_SALT);
-
-		return null;
-	}
-
-	/**
-	 * 401：无效 Token 与不存在服务器共用同一分支
-	 *
-	 * 信封形态与框架的 JSON 错误响应一致（{ success, message, error }），
-	 * 但直接以 data() 返回而不抛 UnauthorizedException：异常路径会按请求的
-	 * Accept 头决定返回 JSON 还是 HTML 错误页，agent（Go http client）默认
-	 * 不带 Accept: application/json，会拿到无法解析的 HTML。
-	 */
-	private function unauthorized(): ResponseInterface
-	{
-		return data([
-			'success' => false,
-			'message' => self::UNAUTHORIZED_MESSAGE,
-			'error' => self::UNAUTHORIZED_MESSAGE,
-		], 401);
 	}
 
 	/**

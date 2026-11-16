@@ -1642,6 +1642,29 @@ class Repository
 	}
 
 	/**
+	 * 查该服务器当前活跃（未过期）的连接 id，没有则返回 null
+	 *
+	 * 面向列表 / 详情等「只需要知道连没连上」的调用方：isServerConnectionActive()
+	 * 要调用方自己持有 connection_id（长轮询循环内自检用），而用户态接口只知道
+	 * server_id，没有连接 id 可传。server_connections 的 server_id 有唯一索引，
+	 * 每台服务器最多一行，命中即代表在线（PRD §5.1 / §5.2）。
+	 */
+	public function getActiveServerConnectionId(int $server_id): ?string
+	{
+		$stmt = $this->pdo->prepare(
+			'SELECT connection_id FROM server_connections
+			WHERE server_id = :server_id AND expires_at > :now'
+		);
+		$stmt->execute([
+			':server_id' => $server_id,
+			':now' => date('Y-m-d H:i:s'),
+		]);
+		$connection_id = $stmt->fetchColumn();
+
+		return false === $connection_id ? null : (string)$connection_id;
+	}
+
+	/**
 	 * 清理过期的连接行，返回删除行数
 	 *
 	 * 表只有「每服务器一行」的量级，全表删除的成本可忽略；失败时返回 0

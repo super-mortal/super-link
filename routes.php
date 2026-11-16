@@ -22,6 +22,10 @@ use Controllers\ItemsFetchMetadataController;
 use Controllers\ItemsGetController;
 use Controllers\ItemsTagsUpdateController;
 use Controllers\ItemsUpdateController;
+use Controllers\ServersDeleteController;
+use Controllers\ServersGetController;
+use Controllers\ServersPatchController;
+use Controllers\ServersPostController;
 use Controllers\SetupDatabaseController;
 use Controllers\SettingsNetworkGetController;
 use Controllers\SettingsNetworkTestController;
@@ -193,6 +197,22 @@ return [
 				'delete' => [
 					'POST' => AccountsAuthorizationsDeleteController::class,
 				],
+			],
+		],
+		// 服务器监控（PRD docs/prd/server.md）：用户态管理接口（会话认证）。
+		// 列表 / 新增 / 更新挂在 /api/servers，删除走 /api/servers/delete（POST，与
+		// items / accounts / skills 的删除端点一致）；id 一律查询串或 body 传递
+		// （Router 无路径参数，PRD §6 已按该惯例定稿）。agent 态端点
+		// （/api/agent/connect、/api/agent/report、/content/install-agent）在后续
+		// 任务注册，届时需同步加入认证与 CSRF 跳过名单
+		'servers' => [
+			'/' => [
+				'GET' => ServersGetController::class,
+				'POST' => ServersPostController::class,
+				'PATCH' => ServersPatchController::class,
+			],
+			'delete' => [
+				'POST' => ServersDeleteController::class,
 			],
 		],
 		'setup' => [

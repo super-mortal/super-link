@@ -42,8 +42,14 @@ class ServerInstallCommand
 	 * 含非标准端口），缺失时退到 SERVER_NAME + SERVER_PORT。agent 与 Hub 同域
 	 * 部署时该地址即被监控机可达的地址；若后续内外网分离需要显式配置，在这里换成
 	 * Config 读取即可，安装命令格式不变。
+	 *
+	 * public 的原因：除本类的 build()（新增 / 重置 Token 端点返回的一行安装命令）
+	 * 外，InstallAgentController（GET /content/install-agent）向安装脚本注入
+	 * Hub 地址时也复用同一推导——命令里连的 Hub 与脚本内回落地址必须是同一个，
+	 * 否则被监控机会连到与命令不一致的地址。方法只读 $_SERVER、无副作用，
+	 * 提升可见性不改变既有调用行为。
 	 */
-	private static function resolveHubUrl(): string
+	public static function resolveHubUrl(): string
 	{
 		$scheme = 'http';
 		$forwarded_proto = strtolower(trim((string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')));

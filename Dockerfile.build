@@ -48,6 +48,13 @@ RUN rm -rf /etc/apache2/sites-enabled/*
 COPY ./apache-conf /etc/apache2/sites-enabled
 
 COPY Config.php init.php routes.php app-info.json ./
+# 被监控机安装脚本（PRD docs/prd/server.md §5.2）：仓库根 agent/install-agent.sh
+# 是单一事实源——Hub 的 GET /content/install-agent 在镜像内经
+# ROOT_DIR/agent/install-agent.sh（即 /var/www/html/agent/install-agent.sh）
+# 读取并下发，宿主机与镜像必须是同一份脚本。只 COPY 单文件而非整个 agent/
+# 目录：目录内的 Go 源码 / go.mod / systemd 模板属于 CI 构建 link-agent 二进制
+# 的产物链，与 PHP 运行时无关，不进镜像
+COPY agent/install-agent.sh agent/install-agent.sh
 COPY controllers controllers
 COPY framework framework
 COPY models models

@@ -1,4 +1,4 @@
-import { useContext, useEffect, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Container, HardDrive, ServerCog } from 'lucide-react';
@@ -10,10 +10,12 @@ import { Skeleton } from '@/components/ui/skeleton.tsx';
 import { ServerBasicInfoCard } from '@/components/Server/ServerBasicInfoCard.tsx';
 import { ServerDetailHeader } from '@/components/Server/ServerDetailHeader.tsx';
 import { ServerInstallCard } from '@/components/Server/ServerInstallCard.tsx';
+import { ServerMetricsSection } from '@/components/Server/ServerMetricsSection.tsx';
 import { ServerNoteCard } from '@/components/Server/ServerNoteCard.tsx';
 import { ServerStatusNotice } from '@/components/Server/ServerStatusNotice.tsx';
 import { StoreContext } from '@/store/storeContext.ts';
-import type { ServerDetailType, ServerMetricsPointType } from '@/lib/types.ts';
+import { SERVER_DEFAULT_RANGE } from '@/lib/serverFormat.ts';
+import type { ServerDetailType, ServerMetricsSeriesType, ServerRangeType } from '@/lib/types.ts';
 
 /** 指标快照轮询间隔（PRD §5.5「指标快照每 30 秒轮询」）；连接状态同轮刷新，断开即时反映 */
 const POLL_INTERVAL_MS = 30_000;
@@ -22,14 +24,14 @@ const POLL_INTERVAL_MS = 30_000;
  * `/servers/:serverID` 服务器详情页（PRD §5.5，决策 D5：账号库式独立外壳、无解锁态）。
  *
  * 结构：返回行 → 头部（名称 / 分组 / 四态徽章 / 系统信息 / 开机时长与负载 / 最后回传 + 操作区）
- * → 非在线态提示条 → 图表区占位（task13）→ 两栏：磁盘 / Docker 占位（task14）+ 备注卡 +
- * 右栏基本信息 / 接入信息卡。
+ * → 非在线态提示条 → 图表区（task13：recharts 三图 + 范围切换）→ 两栏：磁盘 / Docker
+ * 占位（task14）+ 备注卡 + 右栏基本信息 / 接入信息卡。
  *
  * 数据口径（对照 ServersDetailController 真实出参）：
  * - detail 接口只回 `server`（公开字段 + 连接状态）与 `docker`，**不含指标快照**；
- *   头部的开机时长 / 当前负载改取指标序列（1h 档）最新点，落在页面内存 state。
- * - 轮询同时刷新 detail 与 1h 快照；store.serverMetrics 随之被置为 1h 档，
- *   task13 图表区落地后由其按当前 range 接管该字段与轮询参数。
+ *   头部的开机时长 / 当前负载取指标序列最新点（渲染期派生，见下方 snapshot）。
+ * - 轮询（30s）同时刷新 detail 与当前 range 的指标序列（task13 接管，默认 6h）；
+ *   store.serverMetrics 随之被置为当前档，图表区经页面 state 消费。
  */
 export const ServerDetailPage = observer(() => {
   const store = useContext(StoreContext);
@@ -42,8 +44,19 @@ export const ServerDetailPage = observer(() => {
   const [detail, setDetail] = useState<ServerDetailType | null>(null);
   /** 首屏加载失败 / 服务器不存在（fetchServerDetail 返回 null，store 已 toast）；轮询失败不清此态 */
   const [loadFailed, setLoadFailed] = useState(false);
-  /** 头部开机时长 / 当前负载（指标序列最新点）；非在线态为 null，对应项不渲染 */
-  const [snapshot, setSnapshot] = useState<ServerMetricsPointType | null>(null);
+  /**
+   * 当前图表范围（1h / 6h / 24h / 30d，默认 6h，PRD §5.5）。
+   * 详情页无 URL 状态约定，放页面 state：切换只重拉指标（detail 不清屏），离开页面
+   * 自然重置；跨服务器切换保持当前档（与原型 state.serverRange 的全局保持同语义）。
+   */
+  const [range, setRange] = useState<ServerRangeType>(SERVER_DEFAULT_RANGE);
+  /** 当前 range 的指标序列（图表区数据源）；非在线态同样拉取——图表保留断开前的历史 */
+  const [metrics, setMetrics] = useState<ServerMetricsSeriesType | null>(null);
+  /**
+   * 轮询偶发失败时保留旧数据、不停轮询（task12 语义）。用 ref 而非局部变量保持
+   * 「曾加载成功」：range 切换会重跑轮询 effect，局部变量会把它误判为首次失败而停轮询。
+   */
+  const everLoadedRef = useRef(false);
 
   /**
    * task15 接线点：四个操作只置位页面 state（弹窗 / 写操作本体属 task15）。
@@ -65,20 +78,36 @@ export const ServerDetailPage = observer(() => {
     navigate(-1);
   };
 
+  /**
+   * 头部开机时长 / 当前负载取指标序列最新点（task12 为单独 1h 拉取；task13 起指标轮询
+   * 按当前 range 接管，快照统一取当前序列末点，省一半指标请求）。非在线态为 null，
+   * 头部不渲染这两项（离线后 uptime / 负载失去实时意义）。
+   * 取舍：30d 档末点为服务端小时聚合桶（决策 D4），开机时长呈桶内均值（粒度到天/小时，
+   * 肉眼无差），负载为桶内均值——看月趋势时切回明细档即可看实时值。
+   */
+  const latestPoint = metrics && metrics.points.length > 0 ? metrics.points[metrics.points.length - 1] : null;
+  const snapshot = detail?.server.status === 'online' ? latestPoint : null;
+
+  // 切换服务器（/servers/1 → /servers/2）先清掉上一台的数据，避免头部 / 图表闪现旧内容。
+  // 单独一个 effect：轮询 effect 还依赖 range，若把清屏合并在里面，切换 range 会连带
+  // 清掉 detail、触发整页加载骨架
+  useEffect(() => {
+    if (!validID) {
+      return;
+    }
+    setDetail(null);
+    setMetrics(null);
+    setLoadFailed(false);
+    everLoadedRef.current = false;
+  }, [validID, serverID]);
+
   useEffect(() => {
     if (!validID) {
       return;
     }
 
-    // 切换服务器（/servers/1 → /servers/2）先清掉上一台的数据与快照，避免头部闪现旧内容
-    setDetail(null);
-    setSnapshot(null);
-    setLoadFailed(false);
-
-    // 卸载 / 切换时置位：丢弃在途响应，避免旧服务器的数据写进新页面
+    // 卸载 / 切换 / 切 range 时置位：丢弃在途响应，避免旧服务器的数据写进新页面
     let cancelled = false;
-    // 本轮（当前 serverID）是否已拿到过数据：轮询偶发失败时保留旧数据不清屏、不停轮询
-    let everLoaded = false;
     let timer = 0;
 
     const loadDetail = async () => {
@@ -87,7 +116,7 @@ export const ServerDetailPage = observer(() => {
         return;
       }
       if (result === null) {
-        if (!everLoaded) {
+        if (!everLoadedRef.current) {
           setLoadFailed(true);
           // 首屏就没拿到（含服务器已不存在的 404）：停掉轮询——store 的 GET 失败会
           // toast，否则对已删除的服务器每 30s 弹一次错误提示；重新进入列表点开即可重试
@@ -95,36 +124,32 @@ export const ServerDetailPage = observer(() => {
         }
         return;
       }
-      everLoaded = true;
+      everLoadedRef.current = true;
       setDetail(result);
       setLoadFailed(false);
 
-      // 开机时长 / 负载仅在线态展示：非在线态不拉指标（pending 从未回传更没有数据），
-      // 并清掉上一轮快照，避免机器离线后头部仍显示离线前的负载
-      if (result.server.status !== 'online') {
-        setSnapshot(null);
+      // task13 接管（task12 占位注释约定）：指标序列按当前 range 拉取，store.serverMetrics
+      // 随之变为当前档，图表区消费本 state。非在线态也拉——离线机器的图表保留断开前
+      // 历史（原型 offline 态不停图表），pending 从未回传返回空序列、图表区走空态。
+      // 拉取失败（null）保留上一份序列不清屏：与 detail 轮询同样「偶发失败不停摆」
+      const series = await store.fetchServerMetrics(serverID, range);
+      if (cancelled || series === null) {
         return;
       }
-
-      const series = await store.fetchServerMetrics(serverID, '1h');
-      if (cancelled) {
-        return;
-      }
-      // 序列按 received_at 升序（后端保证），最后一点即最新快照
-      const points = series?.points ?? [];
-      setSnapshot(points.length > 0 ? points[points.length - 1] : null);
+      setMetrics(series);
     };
 
     void loadDetail();
 
     // 四态都轮询、不按状态门控：online ↔ offline ↔ pending 互转需要及时反映
-    // （如 agent 重连、暂停被恢复），暂停态机器同样如此；个人级请求量可忽略
+    // （如 agent 重连、暂停被恢复），暂停态机器同样如此；个人级请求量可忽略。
+    // range 变化会重跑本 effect：立即按新档重拉一次并重启 30s 轮询
     timer = window.setInterval(() => void loadDetail(), POLL_INTERVAL_MS);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [store, serverID, validID]);
+  }, [store, serverID, validID, range]);
 
   const backButton = (
     <div className="flex items-center gap-2">
@@ -195,16 +220,15 @@ export const ServerDetailPage = observer(() => {
 
               <ServerStatusNotice status={detail.server.status} lastReportAt={detail.server.last_report_at} />
 
-              {/* 图表区占位（task13）：只建分区外壳——标题 + 范围切换挂载点 + 图表卡容器，
-                  recharts 三图（CPU / 内存 / 网络，默认 6 小时）由 task13 填充，
-                  届时按「有历史数据」门控整区渲染、范围切换改走 store.serverMetrics */}
-              <section className="flex flex-col gap-3">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <h2 className="text-[13px] font-medium">历史趋势</h2>
-                  {/* task13 接线点：范围切换（1 小时 / 6 小时 / 24 小时 / 30 天，SERVER_RANGES）挂载处 */}
-                </div>
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{/* task13 填充：三张图表卡 */}</div>
-              </section>
+              {/* 图表区（task13，PRD §5.5 / 决策 D9）：recharts 三图 + 范围切换；
+                  range 状态与轮询接管见上方 effect 与文件头注释 */}
+              <ServerMetricsSection
+                series={metrics}
+                loading={store.serverMetricsLoading}
+                range={range}
+                onRangeChange={setRange}
+                status={detail.server.status}
+              />
 
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
                 <div className="flex flex-col gap-4 lg:col-span-2">

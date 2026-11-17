@@ -8,8 +8,8 @@ type ServerDetailHeaderProps = {
   server: ServerWithStatusType;
   /**
    * 开机时长 / 当前负载的数据源：detail 接口不含指标快照（ServersDetailController 只回
-   * server + docker），由页面拉取 1h 指标序列后取最新点传入；非在线态或未回传时为 null，
-   * 头部不渲染这两项（PRD §5.5「在线时展示」）。
+   * server + docker），由页面拉取当前 range 的指标序列后取最新点传入；非在线态或未回传时
+   * 为 null，头部不渲染这两项（PRD §5.5「在线时展示」）。
    */
   snapshot: ServerMetricsPointType | null;
   /** 四个操作目前只置位页面 state：弹窗 / 写操作本体属 task15 接线（store 方法已就绪） */

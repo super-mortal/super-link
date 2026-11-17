@@ -48,6 +48,7 @@ super-link 是自托管的个人数据管理工具，从书签管理起步，通
 | 前端 | React 19、TypeScript 5.8、Vite 7、Tailwind CSS 4（`@tailwindcss/vite`）、MobX 6、react-router-dom 6 |
 | 组件 | shadcn/ui（new-york、neutral、CSS 变量）+ Radix；combobox 使用 `@base-ui/react` |
 | 表格/表单 | `@tanstack/react-table`、react-hook-form + zod |
+| 图表 | `recharts`（决策 D9，服务器详情页指标趋势；SVG presentation attribute 不解析 CSS 变量，语义色经 `getComputedStyle` 解析后传入） |
 | 图标 | `lucide-react` 为主，`@tabler/icons-react` 补品牌图标 |
 | 后端 | PHP 8.4、Apache + mod_rewrite、SQLite PDO、Composer |
 
@@ -107,7 +108,7 @@ composer install --no-dev --optimize-autoloader   # 运行时依赖：guzzlehttp
 - 样式：Tailwind CSS v4；设计 token 是 `index.css` 中的 CSS 变量（oklch，`:root`/`.dark` 两套）。**禁止写死颜色，一律用语义变量/类**。
 - 组件库：`components/ui/` 下 37 个 shadcn 风格原语；业务组件按 `Sidebar/`、`Table/`、`EditItem/`、`Settings/` 分目录；三种布局在 `components/Table/Layouts/`。
   账号库组件在 `components/Account/`：`Layouts/`（`AccountList` / `AccountCards` / `AccountTable` 三布局 + 账号字段列定义）、`VaultToolbar`、`VaultLockScreen`、`AccountVaultList`（列表外壳）、`CredentialRow` / `AccountBadges` / `SecretButtons` 等凭据行小组件。
-  服务器监控组件在 `components/Server/`：`ServerListPage` / `ServerToolbar` / `ServerCard` / `ServerEmptyState`（列表页）、`ServerDetailPage`（详情页外壳：30s 轮询 detail + 1h 指标快照取最新点供头部「开机时长 / 负载」，detail 接口不含快照）、`ServerDetailHeader`（名称 / 分组 / 四态徽章 / 系统信息 + 操作区）、`ServerStatusBadge`、`ServerStatusNotice`（离线 / 暂停 / 等待连接提示条）、`ServerBasicInfoCard`（基本信息 + Agent 版本落后提示，D12，与 app-info 的 installed_version 对比）、`ServerInstallCard`（接入信息卡，D6 选项 b：安装命令模板不含明文 Token，Hub 地址取 `window.location.origin`）、`ServerNoteCard`；图表区（task13）与磁盘 / Docker 区（task14）在详情页留有空 section 占位。
+  服务器监控组件在 `components/Server/`：`ServerListPage` / `ServerToolbar` / `ServerCard` / `ServerEmptyState`（列表页）、`ServerDetailPage`（详情页外壳：30s 轮询 detail + 当前 range 的指标序列，头部「开机时长 / 负载」取序列最新点——detail 接口不含快照；非在线态不停图表，保留断开前历史）、`ServerDetailHeader`（名称 / 分组 / 四态徽章 / 系统信息 + 操作区）、`ServerStatusBadge`、`ServerStatusNotice`（离线 / 暂停 / 等待连接提示条）、`ServerBasicInfoCard`（基本信息 + Agent 版本落后提示，D12，与 app-info 的 installed_version 对比）、`ServerInstallCard`（接入信息卡，D6 选项 b：安装命令模板不含明文 Token，Hub 地址取 `window.location.origin`）、`ServerNoteCard`；图表区（task13，recharts）：`ServerMetricsSection`（范围切换 1h / 6h / 24h / 30d 默认 6h；range 为页面 state、不做 URL 同步，切换只重拉指标不清 detail）+ `ServerMetricChartCard`（CPU / 内存面积图 --chart-1 / --chart-2、网络 rx/tx 双线 --chart-3 / --chart-4；统计行当前 / 峰值 / 均值按全量序列计算）+ `TrendChart`（recharts 封装）+ `chartTokens.ts`（getComputedStyle 解析 --chart-* 语义色，MutationObserver 跟随主题切换）+ `serverChartData.ts`（纯数据 helper：接口序列 → 图表点 / 统计值 / 120 点抽样）；磁盘 / Docker 区（task14）在详情页留有空 section 占位。
   登录页组件在 `components/Auth/`：`LoginIntro`（左侧项目介绍：Logo、slogan、4 条能力点、非安全上下文提示、版本号，PRD O-6；<1024px 隐藏能力点），由 `layouts/Auth.tsx` 两栏外壳以 `intro` prop 承载。
 - 表单：react-hook-form + zod（schema 在 `lib/types.ts`）。
 - 别名：`@` → `src/`（vite.config.ts + tsconfig）。vite 里另有 `@components`、`@assets`、`@api`、`@utils`，但代码中统一用 `@`。

@@ -1,14 +1,16 @@
 import { useContext, useEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Container, HardDrive, ServerCog } from 'lucide-react';
+import { ArrowLeft, ServerCog } from 'lucide-react';
 import { Button } from '@/components/ui/button.tsx';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card.tsx';
+import { Card, CardContent } from '@/components/ui/card.tsx';
 import { Dashboard } from '@/layouts/Dashboard.tsx';
 import { SidebarToggler } from '@/components/Sidebar/SidebarToggler.tsx';
 import { Skeleton } from '@/components/ui/skeleton.tsx';
 import { ServerBasicInfoCard } from '@/components/Server/ServerBasicInfoCard.tsx';
 import { ServerDetailHeader } from '@/components/Server/ServerDetailHeader.tsx';
+import { ServerDiskSection } from '@/components/Server/ServerDiskSection.tsx';
+import { ServerDockerSection } from '@/components/Server/ServerDockerSection.tsx';
 import { ServerInstallCard } from '@/components/Server/ServerInstallCard.tsx';
 import { ServerMetricsSection } from '@/components/Server/ServerMetricsSection.tsx';
 import { ServerNoteCard } from '@/components/Server/ServerNoteCard.tsx';
@@ -24,14 +26,18 @@ const POLL_INTERVAL_MS = 30_000;
  * `/servers/:serverID` 服务器详情页（PRD §5.5，决策 D5：账号库式独立外壳、无解锁态）。
  *
  * 结构：返回行 → 头部（名称 / 分组 / 四态徽章 / 系统信息 / 开机时长与负载 / 最后回传 + 操作区）
- * → 非在线态提示条 → 图表区（task13：recharts 三图 + 范围切换）→ 两栏：磁盘 / Docker
- * 占位（task14）+ 备注卡 + 右栏基本信息 / 接入信息卡。
+ * → 非在线态提示条 → 图表区（task13：recharts 三图 + 范围切换）→ 两栏：磁盘区 /
+ * Docker 区（task14）+ 备注卡 + 右栏基本信息 / 接入信息卡。
  *
  * 数据口径（对照 ServersDetailController 真实出参）：
  * - detail 接口只回 `server`（公开字段 + 连接状态）与 `docker`，**不含指标快照**；
  *   头部的开机时长 / 当前负载取指标序列最新点（渲染期派生，见下方 snapshot）。
  * - 轮询（30s）同时刷新 detail 与当前 range 的指标序列（task13 接管，默认 6h）；
  *   store.serverMetrics 随之被置为当前档，图表区经页面 state 消费。
+ * - 磁盘数据不在 detail 出参里（后端不出），取列表项 `store.servers` 的 disks
+ *   （AppSidebar 进入服务器路由时统一拉取，PRD §5.3）：磁盘是进入页面时的快照，
+ *   不随 30s 轮询刷新（磁盘用量变化慢，可接受）；Docker 表格取 detail.docker，
+ *   随轮询自动更新。
  */
 export const ServerDetailPage = observer(() => {
   const store = useContext(StoreContext);
@@ -87,6 +93,16 @@ export const ServerDetailPage = observer(() => {
    */
   const latestPoint = metrics && metrics.points.length > 0 ? metrics.points[metrics.points.length - 1] : null;
   const snapshot = detail?.server.status === 'online' ? latestPoint : null;
+
+  /**
+   * 磁盘区数据来源（task14）：detail 接口出参只有 server + docker，不含磁盘
+   * （对照 ServersDetailController），磁盘取侧栏进入服务器路由时统一拉取的列表项
+   * disks（AppSidebar 的 fetchServers，PRD §5.3）。因此磁盘是进入页面时的快照，
+   * 不随 30s 轮询刷新——磁盘用量按 GB 级慢速变化，可接受。已知边界：若侧栏分组
+   * 筛选把当前服务器排除在列表结果外（如带筛选直改 URL 进入的极端场景），
+   * 这里会取到空数组、磁盘区显示空态；重新进入列表即可恢复。
+   */
+  const disks = store.servers.find((item) => item.id === serverID)?.disks ?? [];
 
   // 切换服务器（/servers/1 → /servers/2）先清掉上一台的数据，避免头部 / 图表闪现旧内容。
   // 单独一个 effect：轮询 effect 还依赖 range，若把清屏合并在里面，切换 range 会连带
@@ -232,28 +248,13 @@ export const ServerDetailPage = observer(() => {
 
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
                 <div className="flex flex-col gap-4 lg:col-span-2">
-                  {/* 磁盘区占位（task14）：分区外壳，各挂载点用量条（超 80% 警示 / 90% 危险）由 task14 填充 */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2 text-base">
-                        <HardDrive className="text-muted-foreground size-4" aria-hidden="true" />
-                        磁盘
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>{/* task14 填充：磁盘用量条列表 */}</CardContent>
-                  </Card>
+                  {/* 磁盘区（task14，PRD §5.5）：各挂载点用量条，≥80% 警示 / ≥90% 危险；
+                      数据来源见上方 disks 注释（列表项快照，不随轮询刷新） */}
+                  <ServerDiskSection disks={disks} />
 
-                  {/* Docker 区占位（task14）：分区外壳，容器表格（名称 / 状态 / CPU / 内存 / 网络）
-                      由 task14 基于 detail.docker 填充（Docker 不可用时展示空态） */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2 text-base">
-                        <Container className="text-muted-foreground size-4" aria-hidden="true" />
-                        Docker 容器
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>{/* task14 填充：容器表格 */}</CardContent>
-                  </Card>
+                  {/* Docker 区（task14，PRD §5.3 / §5.5）：容器表格（名称 / 状态 / CPU / 内存 /
+                      网络）；detail.docker 随 30s 轮询自动刷新，空态二分见组件注释 */}
+                  <ServerDockerSection containers={detail.docker} hasReported={detail.server.last_report_at !== null} />
 
                   <ServerNoteCard note={detail.server.note} />
                 </div>

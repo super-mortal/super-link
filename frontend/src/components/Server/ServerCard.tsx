@@ -3,28 +3,8 @@ import type { KeyboardEvent, ReactNode } from 'react';
 import { Clock, Container, Cpu, HardDrive, MemoryStick, Network } from 'lucide-react';
 import { cn } from '@/lib/utils.ts';
 import { SERVER_STATUS, formatServerLastReport, formatServerRate, formatServerUptime } from '@/lib/serverFormat.ts';
+import { UsageMeter, diskPct, meterTone, type MeterTone } from '@/components/Server/UsageMeter.tsx';
 import type { ServerItemType } from '@/lib/types.ts';
-
-/** meter 细条配色档位（原型 bar > i 的 ok / warn / err / mute，见 mockups/styles.css） */
-type MeterTone = 'ok' | 'warn' | 'err' | 'mute';
-
-const METER_TONE_CLASS: Record<MeterTone, string> = {
-  ok: 'bg-green-500',
-  warn: 'bg-amber-500',
-  err: 'bg-destructive',
-  // 离线卡片整体置灰时用：细条变灰但不消失，保持三列结构稳定
-  mute: 'bg-muted-foreground/45',
-};
-
-/**
- * meter 阈值配色（beszel colorWarn / colorCrit 同款，PRD §5.1）：
- * CPU / 内存按 65 黄 / 90 红；磁盘按 80 黄 / 90 红——磁盘用量涨得慢，阈值放宽一档。
- */
-const meterTone = (pct: number, warn = 65, crit = 90): MeterTone => (pct >= crit ? 'err' : pct >= warn ? 'warn' : 'ok');
-
-/** 磁盘用量百分比：total 为 0 的异常数据按 0 处理，避免 NaN 宽度撑爆布局 */
-const diskPct = (disk: { used: number; total: number }): number =>
-  disk.total > 0 ? (disk.used / disk.total) * 100 : 0;
 
 type ServerMeterRowProps = {
   icon: ReactNode;
@@ -36,19 +16,14 @@ type ServerMeterRowProps = {
   title?: string;
 };
 
-/** 指标行：图标 + 标签 + 「数值 | 细条」三列（原型 meterRowHtml / .srv-row） */
+/** 指标行：图标 + 标签 + 「数值 | 细条」三列（原型 meterRowHtml / .srv-row；细条为共享 UsageMeter） */
 const ServerMeterRow = ({ icon, label, valueText, pct, tone, title }: ServerMeterRowProps) => (
   <div className="grid grid-cols-[1rem_2.5rem_minmax(0,1fr)] items-center gap-2" title={title}>
     <span className="text-muted-foreground flex [&_svg]:size-3.5">{icon}</span>
     <span className="text-muted-foreground text-xs">{label}</span>
     <span className="flex min-w-0 items-center gap-2.5">
       <b className="min-w-10 text-right text-xs font-medium tabular-nums">{valueText}</b>
-      <span className="bg-secondary flex h-2 flex-1 overflow-hidden rounded-full">
-        <span
-          className={cn('block h-full rounded-full', METER_TONE_CLASS[tone])}
-          style={{ width: `${Math.max(0, Math.min(100, pct)).toFixed(1)}%` }}
-        />
-      </span>
+      <UsageMeter pct={pct} tone={tone} className="flex-1" />
     </span>
   </div>
 );

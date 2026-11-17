@@ -168,6 +168,7 @@ curl -fsSL "<Hub 地址>/content/install-agent" | sudo bash -s -- --hub-url "<Hu
 ## 致谢
 
 - [denho/faved](https://github.com/denho/faved) v2.9.0（2026-03-30）为本项目提供部分 UI 设计与书签系统设计思路
+- [henrygd/beszel](https://github.com/henrygd/beszel)（MIT）为「服务器监控」模块提供架构与设计参考：Hub + Agent 长连接形态、系统卡片的信息层级与指标口径（CPU / 内存 / 磁盘 / 网络 / Docker 的统计方式）；本项目为其思想的独立实现，未拷贝其代码
 
 ## 许可证
 

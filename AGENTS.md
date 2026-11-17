@@ -6,12 +6,12 @@
 
 ## 项目概览
 
-super-link 是自托管的个人数据管理工具，从书签管理起步，通过模块机制扩展（当前：书签、Skill、账号库）。数据完全由用户自持。
+super-link 是自托管的个人数据管理工具，从书签管理起步，通过模块机制扩展（当前：书签、Skill、账号库；服务器监控为独立路由，不进模块注册表，决策 D5）。数据完全由用户自持。
 
 - 前端：React 19 + TypeScript 5.8 + Vite 7 SPA（`frontend/`）
 - 后端：PHP 8.4 + Apache，纯 JSON REST API（无服务端渲染 UI）
 - 数据库：SQLite（默认 `storage/link_navigator.db`）
-- 文档：产品需求文档放在 `docs/prd/`；账号库见 [docs/prd/account-vault.md](docs/prd/account-vault.md)，优化项见 [docs/prd/optimization.md](docs/prd/optimization.md)，服务器监控（Hub + Agent，讨论中）见 [docs/prd/server.md](docs/prd/server.md)；本地 HTML 高保真交互原型在 `mockups/`（不随仓库提交）
+- 文档：产品需求文档放在 `docs/prd/`；账号库见 [docs/prd/account-vault.md](docs/prd/account-vault.md)，优化项见 [docs/prd/optimization.md](docs/prd/optimization.md)，服务器监控（Hub + link-agent）见 [docs/prd/server.md](docs/prd/server.md)；本地 HTML 高保真交互原型在 `mockups/`（不随仓库提交）
 
 ## 版本发布记录
 
@@ -21,9 +21,9 @@ super-link 是自托管的个人数据管理工具，从书签管理起步，通
 | v0.0.5 | 2026-11-10 | 账号库（加密账号 / 分组 / 平台 / TOTP）、设置页账号库分区与加密导出导入 |
 
 - 当前版本号写在根目录 `app-info.json` 的 `version` 字段；`GET /api/app-info` 与登录页 / 设置页的版本号都取自此文件，**发版时必须同步更新**。
-- 发布流程：整理版本号与四段式发布说明 → 用户过目确认 → 更新 `app-info.json` 并提交 → 打 `vX.Y.Z` tag 并推送 → CI（`.github/workflows/docker-publish.yml`）自动构建 Docker 镜像推 GHCR 并创建 GitHub Release。未经用户确认不得执行后四步。
+- 发布流程：整理版本号与四段式发布说明 → 用户过目确认 → 更新 `app-info.json` 并提交 → 打 `vX.Y.Z` tag 并推送 → CI 自动发布：`.github/workflows/docker-publish.yml` 构建 Docker 镜像推 GHCR 并创建 GitHub Release，`.github/workflows/link-agent-release.yml` 交叉编译 link-agent 双架构二进制及 `.sha256` 上传同一 Release。未经用户确认不得执行后四步。
 - **Release 说明**：CI 的 `softprops/action-gh-release` 使用 `body_path: docs/releases/<tag>.md` + `generate_release_notes: true`——发布说明写成 `docs/releases/vX.Y.Z.md`（四段式）随 tag 一起提交，Release body 即为该文件内容（后附自动生成的 changelog 链接）；文件缺失时 action 警告并回退为纯自动生成，不会导致发布失败。应用内「查看更新内容」弹窗展示的就是该 body。
-- **发布产物**：当前为 Docker 镜像；服务器模块落地后，同一 tag 的 Release 将同时附带 link-agent 双架构二进制（版本随主版本，决策见 [docs/prd/server.md](docs/prd/server.md) D12）。
+- **发布产物**：同一 tag 同时产 Docker 镜像（推 GHCR）与 link-agent 双架构二进制（`link-agent-linux-amd64` / `link-agent-linux-arm64` + 同名 `.sha256`，挂同一 GitHub Release；版本随主版本，决策见 [docs/prd/server.md](docs/prd/server.md) D12）。
 
 ## 协作与发布流程
 
@@ -126,10 +126,10 @@ composer install --no-dev --optimize-autoloader   # 运行时依赖：guzzlehttp
   - `GET /api/app-info` 附带 `latest_release`（`name` / `body` / `published_at` / `html_url`，来自 GitHub Releases API 最新 release 的说明 Markdown，与版本号共用 12 小时缓存；GitHub 不可达时为 null，前端降级展示，见 optimization.md O-4）。
 - 中间件（`framework/bootstrap.php` 顺序）：CSRF → DatabaseMigrations → Authentication。
   - CSRF：写操作校验 `X-CSRF-TOKEN` 请求头（或 `csrf_token` 字段）；GET 跳过；token 同时写入 `CSRF-TOKEN` cookie。
-  - Authentication：`users` 表非空即启用认证，未登录返回 401；`AuthLoginController` 与 `AppInfoController` 跳过（后者供登录页展示版本号，只含公开版本信息，PRD O-6）；数据库未初始化时跳过。
+  - Authentication：`users` 表非空即启用认证，未登录返回 401；`AuthLoginController`、`AppInfoController`（后者供登录页展示版本号，只含公开版本信息，PRD O-6）与 agent 态三个控制器（详见下方「服务器监控」条）跳过；数据库未初始化时跳过。
   - 会话：cookie 名 `link-navigator-session`，有效期 7 天。
 - 数据层：`models/Repository.php`（SQLite PDO 查询）、`ItemCreator.php`、`TagCreator.php`。
-- **服务器监控**（PRD `docs/prd/server.md`）：`servers` 表 + `server_metrics` / `server_disks` / `server_docker` / `server_connections`（长连接注册表）。用户态端点：`GET /api/servers`、`POST /api/servers`、`PATCH /api/servers`、`POST /api/servers/delete`、`GET /api/servers/detail`、`GET /api/servers/metrics?server-id=&range=1h|6h|24h|30d`（前三档明细；30d 由 `Repository::getServerMetricsHourly()` 在 SQL 层按小时聚合，AVG/MAX 口径见方法注释，决策 D4 不建聚合表）、`POST /api/servers/token`（重置 Token：旧 Token 立即失效，新明文仅此次返回，响应 no-store）。Token 为 SHA-256 + 每服务器随机盐（`Utils/ServerToken.php`），用户态响应一律不返回哈希与盐（`Utils/ServerPayload.php` 白名单）；安装命令组装与 Hub 地址推导共用 `Utils/ServerInstallCommand.php`（新增与重置两个端点）。agent 态端点（`/api/agent/connect`、`/api/agent/report`、`/content/install-agent`）在后续任务注册，届时需加入认证与 CSRF 跳过名单。被监控机安装脚本为仓库根 `agent/install-agent.sh`（单一事实源：`/content/install-agent` 内容路由直接返回该文件，可文本替换其中的 `__HUB_URL__` 占位符注入 Hub 地址，`--hub-url` / `--token` 参数优先于环境变量兜底）；CI 发布时需在同一 GitHub Release 产出 `link-agent-linux-amd64` / `link-agent-linux-arm64` 及同名 `.sha256` 校验文件（D12；脚本在校验文件缺失时拒绝安装）。
+- **服务器监控**（PRD `docs/prd/server.md`）：五张表 `servers` / `server_metrics` / `server_disks` / `server_docker` / `server_connections`（长连接注册表）；30 天明细清理挂在 `migrate()` 末尾顺带执行（决策 D4，到期直接删除、不建聚合表）。用户态端点：`GET /api/servers`、`POST /api/servers`、`PATCH /api/servers`、`POST /api/servers/delete`、`GET /api/servers/detail`、`GET /api/servers/metrics?server-id=&range=1h|6h|24h|30d`（前三档明细；30d 由 `Repository::getServerMetricsHourly()` 在 SQL 层按小时聚合，AVG/MAX 口径见方法注释，决策 D4 不建聚合表）、`POST /api/servers/token`（重置 Token：旧 Token 立即失效，新明文仅此次返回，响应 no-store）。Token 为 SHA-256 + 每服务器随机盐（`Utils/ServerToken.php`），用户态响应一律不返回哈希与盐（`Utils/ServerPayload.php` 白名单）；安装命令组装与 Hub 地址推导共用 `Utils/ServerInstallCommand.php`（新增与重置两个端点）。agent 态端点已注册并实现：`GET /api/agent/connect`（长轮询接入，单次持有 50s：避开生产镜像 `Dockerfile.build` 的 `max_execution_time=60`，循环内每秒 `flush()` + `connection_aborted()` 自检兑现「断开即离线（秒级）」）、`POST /api/agent/report`（回传快照）、`GET /content/install-agent`（下发安装脚本）——对应 `AgentConnectController` / `AgentReportController` / `InstallAgentController` 三个类，凭 `X-Agent-Token` 认证（`Utils/AgentAuth`，无效 Token 与不存在服务器返回逐字节一致的 401），并已按类名加入 `AuthenticationMiddleware::$skip_auth_routes` 与 `CSRFMiddleware::$skipped_routes`（connect / install-agent 虽是 GET 天然跳过 CSRF，仍显式注册保持名单完整）、`DatabaseMigrations` 的 migrate 跳过名单，以及 `framework/bootstrap.php` 按匹配到的控制器类名跳过 `startSession()`（长轮询每次新建并锁定 session 文件会堵住用户态请求）。连接注册表（`server_connections`，决策 D11）：每 Token 单活跃连接，`server_id` 唯一索引从存储层兜底；新连接注册即删旧行挤占，旧连接在长轮询循环内每秒自检 `isServerConnectionActive()`，发现被顶替即以 `reason=superseded` 结束让 agent 退避重连（防新旧 agent 热循环）；`connection_id` 是 Hub 生成的随机标识、不存 Token 明文；行带 `expires_at`（默认 60s > 持有 50s），`cleanupServerConnections()` 清过期行作为兜底，退出时按 (server_id, connection_id) 精确删除、不会误删挤占者的新行。安装脚本单一事实源为仓库根 `agent/install-agent.sh`：`InstallAgentController` 经 `ROOT_DIR . '/agent/install-agent.sh'` 读取、文本替换 `__HUB_URL__` 占位符注入 Hub 地址后以 `text/x-shellscript` 下发（`--hub-url` / `--token` 参数优先于环境变量兜底；缺失文件 500 + error_log）；镜像内由 `Dockerfile.build` 单文件 `COPY agent/install-agent.sh agent/install-agent.sh` 落到 `/var/www/html/agent/`，与 ROOT_DIR 解析一致（只 COPY 脚本，Go 源码 / go.mod / systemd 模板不进镜像）。CI（`.github/workflows/link-agent-release.yml`）随主版本 tag 产出 `link-agent-linux-amd64` / `link-agent-linux-arm64` 及同名 `.sha256` 上传同一 GitHub Release（D12；脚本在校验文件缺失时拒绝安装）。
 - **GitHub 网络访问三档设置（PRD O-5）**：`app_settings` 表（key/value）存 `github_access_mode`（auto/proxy/direct）、`github_proxy_prefix`、`app_update_check`；读取走 `Config::getGithubAccessMode()` / `Config::getGithubProxyPrefix()` / `Config::isAppUpdateCheckEnabled()`（数据库优先，环境变量仅初始默认值，非法值 error_log 后回退直连）。接口 `GET/POST /api/settings/network`、`POST /api/settings/network/test`（只做 HEAD 探测）。`GitHelper` 的 clone/fetch 按档位执行：direct 直连、proxy 始终加 `git -c url.<前缀>.insteadOf=...`、auto 先短超时（10s）直连失败再走代理；代理只改写 `github.com` / `codeload.github.com` 两类原始地址，`.git/config` 与 `source_url` 始终是原始地址。
 - **数据库迁移**：`DatabaseMigrations` 中间件每次请求调用 `Repository::migrate()`，做幂等的建表/建索引/删除旧列（如 `items.image`）。改表结构时：新库走 `setupDatabase()`，老库在 `migrate()` 里补增量逻辑，必须可重复执行并兼容已有数据库。
 - **标签按模块隔离**（PRD O-9）：`tags` 表有 `module` 列（`bookmarks` / `skills`，默认 `bookmarks`），唯一索引为 `(module, title, parent)`（`idx_tags_module_title_parent`，取代旧 `idx_tags_title_parent`）；标签接口按模块过滤，账号库不接入 `tags`。
@@ -137,6 +137,13 @@ composer install --no-dev --optimize-autoloader   # 运行时依赖：guzzlehttp
 - Skill 文件：安装在 `storage/skills/`，GitHub 来源保留 `.git` 用于检查更新；上传仅 `.zip`，同名覆盖。
 - `views/` 仅保留服务端错误页：`views/layouts/primary.php`、`views/pages/error.php`；正常 UI 100% 在前端。
 - PHP 代码用 **tab 缩进**（与前端 2 空格不同，各随其便）。
+
+### 被监控端 agent（`agent/`，Go）
+
+- `agent/` 是仓库内独立 Go module（模块名 `github.com/super-mortal/super-link/agent`，`go.mod` 声明 `go 1.23` 保守下限），**零第三方依赖**：采集全部走标准库（`/proc`、`net/http`、`encoding/json`），Docker 采集直连 Docker Engine API（Unix socket），不用 SDK、不用 `docker stats` CLI（决策 D2）；采集器不写 `//go:build linux`，Windows 开发机上 `go vet` / `go test` / 交叉编译均可通过（决策 D8 只部署 Linux）。
+- 构建：本地 `go build -o link-agent .`；交叉编译 `CGO_ENABLED=0 GOOS=linux GOARCH=amd64|arm64 go build -ldflags "-X main.version=<tag>" -o link-agent-linux-<arch> .`（版本经 ldflags 注入，未注入为 `dev`；Hub 详情页据此做落后提示，D12）。提交前门槛：`gofmt -l . && go vet ./... && go test ./...`。CI 见 `.github/workflows/link-agent-release.yml`（在 `agent/` 目录内构建，仓库根无 go.mod）。
+- 长轮询协议基准在 `controllers/AgentConnectController.php` 与 `AgentReportController.php` 文件头注释，agent 侧对应 `main.go` 的 `connectOnce` / `collectAndReport` 与 `protocol.go`：connect 建连（Token 只走 `X-Agent-Token` 头）→ 逐行读 ndjson（保活空行跳过）→ `collect` 指令触发全量采集并经 POST report 回传 → 结束行按语义行动（reconnect 立即重连 / superseded 退避；401 停止重连、403 暂停退避）。
+- `agent/install-agent.sh` 是三处落位的同一份文件：仓库根单一事实源、Hub `/content/install-agent` 内容路由下发（镜像内经 `Dockerfile.build` COPY 到 `/var/www/html/agent/`）、CI 产物命名以它为准；`agent/link-agent.service` 与脚本内嵌 unit 逐字节一致，改一边必须改另一边。目录结构 / 配置键 / 安装流程详见 `agent/README.md`。
 
 ## 常见任务
 

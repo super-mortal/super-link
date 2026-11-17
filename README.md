@@ -128,8 +128,26 @@ APP_UPDATE_CHECK=true          # 设为 false 后关于页不再请求 GitHub
 
 > 第三方公共代理只做 URL 前缀转发，可用性与隐私不受控，长期使用建议自建代理。
 
+## 服务器监控
+
+super-link 内置服务器监控模块（PRD：[docs/prd/server.md](docs/prd/server.md)），用来集中查看多台自托管机器的运行状况。架构为 Hub（super-link 后端）+ link-agent（被监控机上的 Go 静态二进制守护进程）：agent 主动外连 Hub 并保持长连接，每 5 分钟回传一次指标，NAT 后无需公网 IP，也不依赖 SSH 凭据。列表页展示在线 / 离线 / 已暂停 / 等待连接四态与 CPU / 内存 / 磁盘概览，详情页提供趋势图表、各挂载点磁盘用量与 Docker 容器资源占用；历史明细保留 30 天。
+
+接入一台被监控的 Linux 机器：在「添加服务器」弹窗内填入名称与分组，生成后会给出含 Token 的一行安装命令，一键复制到被监控机执行即可（自动识别 amd64 / arm64 架构、下载二进制并校验 SHA-256、注册为 systemd 服务 `link-agent.service`，开机自启、崩溃自动重启）：
+
+```bash
+curl -fsSL "<Hub 地址>/content/install-agent" | sudo bash -s -- --hub-url "<Hub 地址>" --token "<Agent Token>"
+```
+
+- 重装或更换机器：在详情页「重置 Token」，弹窗会给出含新 Token 的完整命令
+- agent 侧细节（配置项、指标口径、构建方式）见 [agent/README.md](agent/README.md)
+
+发布产物：推送 `vX.Y.Z` tag 时，CI 除 Docker 镜像外还会交叉编译 `link-agent-linux-amd64` / `link-agent-linux-arm64` 及同名 `.sha256` 校验文件，挂同一 GitHub Release；agent 版本随主版本，不做独立版本线。
+
+> **部署注意**：agent 与 Hub 之间是长轮询长连接（单次持有约 50 秒）。若 Hub 前置 nginx / Caddy 等反向代理，需调大 `proxy_read_timeout`（建议 70 秒以上），否则连接会被反代定时掐断、服务器频繁掉线；未前置反代时无此限制。
+
 ## 目录结构（核心）
 
+- `agent/`：link-agent 被监控端（Go 源码与安装脚本，见「服务器监控」）
 - `controllers/`：后端控制器
 - `frontend/`：前端源码
 - `framework/`：后端框架核心

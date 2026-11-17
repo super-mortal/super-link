@@ -1,0 +1,18 @@
+[Unit]
+Description=super-link 服务器监控 Agent（link-agent）
+# 等待网络就绪后再启动：agent 启动即主动外连 Hub 并保持长连接（PRD D11）
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/link-agent
+# 配置 /etc/link-agent/config 由 agent 直接读取；EnvironmentFile 同步注入为环境
+# 变量作为双保险（前缀 - 表示文件缺失时不阻断启动，配置缺失由 agent 自己报错）
+EnvironmentFile=-/etc/link-agent/config
+# Restart=always：无论退出码如何都自动重启，兑现 D2「开机自启、崩溃自动重启」
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

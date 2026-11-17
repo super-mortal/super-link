@@ -45,7 +45,7 @@ type Snapshot struct {
 	Kernel       string `json:"kernel"`        // 内核版本
 	Cores        int    `json:"cores"`         // CPU 核数
 	Arch         string `json:"arch"`          // CPU 架构（白名单外字段，Hub 忽略）
-	Ip           string `json:"ip"`            // 本任务不采集（网卡地址枚举不在 task17 范围），留空
+	Ip           string `json:"ip"`            // 默认路由对应的本机 IPv4（/proc/net/fib_trie 解析，见 ip.go）
 	AgentVersion string `json:"agent_version"` // main.go 的 version，-ldflags 注入（决策 D12）
 }
 
@@ -103,7 +103,7 @@ func (c *Collector) CollectAll() Snapshot {
 		Kernel:       system.Kernel,
 		Cores:        system.Cores,
 		Arch:         system.Arch,
-		Ip:           "",
+		Ip:           collectIP(),
 		AgentVersion: version,
 	}
 }

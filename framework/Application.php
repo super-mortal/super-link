@@ -83,6 +83,18 @@ class Application
 		if (json_last_error() !== JSON_ERROR_NONE) {
 			throw new ValidationException('Invalid JSON input', 400);
 		}
+
+		// 合法 JSON 但顶层不是对象（数字 / 字符串 / 布尔 / null）时，json_decode
+		// 返回标量或 null，下面的 array_merge 会抛 TypeError——TypeError 继承
+		// Error 而非 Exception，run() 的 catch (Exception) 捕获不到，最终以
+		// 500 HTML 暴露给调用方（含 agent 的 JSON 端点）。按同一条 Invalid JSON
+		// 的既有范式统一转为 400，信封随 Accept / Content-Type 走 JSON。
+		// 空对象 {} 解码为空数组，仍走原路径，行为不变（删除 / 重置 Token 等
+		// 空体写依赖该路径）
+		if (!is_array($input)) {
+			throw new ValidationException('JSON input must be an object', 400);
+		}
+
 		return array_merge($input, $_GET);
 	}
 }

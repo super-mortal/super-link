@@ -146,6 +146,15 @@ const formatScaledBytes = (bytes: number, unitSuffix: string): string => {
 export const formatServerRate = (bytesPerSecond: number): string => formatScaledBytes(bytesPerSecond, '/s');
 
 /**
+ * 速率字节每秒 → MB/s **数值**（图表 Y 轴 / 统计行专用）。
+ *
+ * 与 formatServerRate 同一 1024 进制口径（1 MB = 1024 × 1024 B），区别只在
+ * 「要数值不要文本」：详情页图表统计行固定共用 MB/s 单位（原型 chartFoot），
+ * 抽来这里统一一份进位口径——图表 helper 不要再各自除一遍。
+ */
+export const bytesPerSecondToMb = (bytesPerSecond: number): number => bytesPerSecond / (1024 * 1024);
+
+/**
  * 容量格式化（字节 → B / KB / MB / GB / TB）。
  * 磁盘与内存用量统一走这里（PRD §5.1 meter 行 / §5.5 磁盘区），GB 量级自然落在 GB。
  */

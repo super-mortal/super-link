@@ -1,3 +1,4 @@
+import { bytesPerSecondToMb } from '@/lib/serverFormat.ts';
 import type { ServerMetricsPointType } from '@/lib/types.ts';
 
 /**
@@ -10,12 +11,6 @@ export const MAX_CHART_POINTS = 120;
 
 /** 图表高度（px）：原型 viewBox 640×180 按卡片宽度等比，取 150 */
 export const CHART_HEIGHT = 150;
-
-/**
- * 网络速率字节每秒 → MB/s（与 serverFormat.formatServerRate 的 1024 进制口径一致，
- * 这里只要数值不要文本，故不复用该函数）。原型统计行固定共用 MB/s 单位。
- */
-const bytesPerSecondToMb = (value: number): number => value / (1024 * 1024);
 
 /** received_at（后端 'Y-m-d H:i:s'，无时区）→ 本地时间戳；无法解析的点整体丢弃，避免横轴出现 NaN */
 const toTimestamp = (value: string | null): number | null => {

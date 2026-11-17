@@ -106,6 +106,22 @@ Local:
         /32 host LOCAL
 `
 
+// fibTrieLinkLocalOnlyFixture 本机地址只有链路本地地址（169.254/16，DHCP
+// 失败时的自动配置段）：有默认路由也不可用作展示 IP，按失败降级
+const fibTrieLinkLocalOnlyFixture = `Main:
+  +-- 0.0.0.0/0 0 1 1
+     |-- 0.0.0.0
+        /0 universe UNICAST
+Local:
+  +-- 0.0.0.0/0 0 1 1
+     |-- 127.0.0.1
+        /32 host LOCAL
+     |-- 169.254.1.5
+        /32 host LOCAL
+     |-- 169.254.169.254
+        /32 host LOCAL
+`
+
 func TestParseFibTrieDefaultIP(t *testing.T) {
 	// 多地址场景：默认路由存在，本地地址有 10.8.0.1 与 192.168.191.238 两个
 	// （另有回环）。fib_trie 不输出默认路由的网关 / 出口网卡 / prefsrc，多
@@ -144,6 +160,13 @@ func TestParseFibTrieLoopbackOnly(t *testing.T) {
 	}
 }
 
+func TestParseFibTrieLinkLocalOnly(t *testing.T) {
+	// 有默认路由但本地地址只有链路本地地址（169.254/16）：APIPA 段不作展示 IP
+	if _, err := parseFibTrieDefaultIP(fibTrieLinkLocalOnlyFixture); err == nil {
+		t.Fatal("仅链路本地地址应返回错误（降级空串）")
+	}
+}
+
 func TestParseFibTrieGarbage(t *testing.T) {
 	for _, content := range []string{"", "   \n\n", "not a fib_trie at all\n", "Main:\n  +-- broken line\n"} {
 		if _, err := parseFibTrieDefaultIP(content); err == nil {
@@ -161,9 +184,11 @@ func TestIsUsableIPv4(t *testing.T) {
 		{"10.8.0.1", true},
 		{"127.0.0.1", false}, // 回环
 		{"127.255.255.254", false},
-		{"0.0.0.0", true}, // 非回环 IPv4（实际不会成为 /32 host LOCAL 的叶子）
-		{"::1", false},    // IPv6 回环
-		{"fe80::1", false},
+		{"169.254.1.1", false},     // 链路本地（APIPA）
+		{"169.254.169.254", false}, // 链路本地（云元数据地址段）
+		{"0.0.0.0", true},          // 非回环 IPv4（实际不会成为 /32 host LOCAL 的叶子）
+		{"::1", false},             // IPv6 回环
+		{"fe80::1", false},         // IPv6 链路本地
 		{"not-an-ip", false},
 		{"", false},
 	}
@@ -172,9 +197,12 @@ func TestIsUsableIPv4(t *testing.T) {
 			t.Fatalf("isUsableIPv4(%q) = %v, want %v", c.in, got, c.want)
 		}
 	}
-	// 与 netip 的口径交叉校验：IsLoopback 覆盖 127/8
+	// 与 netip 的口径交叉校验：IsLoopback 覆盖 127/8，IsLinkLocalUnicast 覆盖 169.254/16
 	if !netip.MustParseAddr("127.0.0.1").IsLoopback() {
 		t.Fatal("netip 口径异常：127.0.0.1 应判回环")
+	}
+	if !netip.MustParseAddr("169.254.1.1").IsLinkLocalUnicast() {
+		t.Fatal("netip 口径异常：169.254.1.1 应判链路本地")
 	}
 }
 

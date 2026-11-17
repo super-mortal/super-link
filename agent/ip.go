@@ -139,12 +139,17 @@ func isFibTableHeader(line string) bool {
 	return strings.HasPrefix(line, "Id ") && strings.HasSuffix(line, ":")
 }
 
-// isUsableIPv4 判断字符串是否为可用的 IPv4 地址字面量（非回环）。
+// isUsableIPv4 判断字符串是否为可用的 IPv4 地址字面量（非回环、非链路本地）。
 // 解析失败按不可用处理：宁可降级为空串，也不把脏数据当 IP 回传。
+//
+// 链路本地地址（169.254.0.0/16）排除理由：该段是 DHCP 失败 / 无路由时的
+// 自动配置地址（APIPA），把它当「出口 IP」展示会误导用户；netip 的
+// IsLinkLocalUnicast 同时覆盖 IPv4 169.254/16 与 IPv6 fe80::/10（本函数已限
+// Is4，实际只对前者生效）。
 func isUsableIPv4(s string) bool {
 	addr, err := netip.ParseAddr(s)
 	if err != nil {
 		return false
 	}
-	return addr.Is4() && !addr.IsLoopback()
+	return addr.Is4() && !addr.IsLoopback() && !addr.IsLinkLocalUnicast()
 }

@@ -1,5 +1,6 @@
-import { useContext, useEffect, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
+import { toast } from 'sonner';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, ServerCog } from 'lucide-react';
 import { Button } from '@/components/ui/button.tsx';
@@ -8,12 +9,15 @@ import { Dashboard } from '@/layouts/Dashboard.tsx';
 import { SidebarToggler } from '@/components/Sidebar/SidebarToggler.tsx';
 import { Skeleton } from '@/components/ui/skeleton.tsx';
 import { ServerBasicInfoCard } from '@/components/Server/ServerBasicInfoCard.tsx';
+import { ServerDeleteDialog } from '@/components/Server/ServerDeleteDialog.tsx';
 import { ServerDetailHeader } from '@/components/Server/ServerDetailHeader.tsx';
 import { ServerDiskSection } from '@/components/Server/ServerDiskSection.tsx';
 import { ServerDockerSection } from '@/components/Server/ServerDockerSection.tsx';
+import { ServerFormDialog } from '@/components/Server/ServerFormDialog.tsx';
 import { ServerInstallCard } from '@/components/Server/ServerInstallCard.tsx';
 import { ServerMetricsSection } from '@/components/Server/ServerMetricsSection.tsx';
 import { ServerNoteCard } from '@/components/Server/ServerNoteCard.tsx';
+import { ServerResetTokenDialog } from '@/components/Server/ServerResetTokenDialog.tsx';
 import { ServerStatusNotice } from '@/components/Server/ServerStatusNotice.tsx';
 import { StoreContext } from '@/store/storeContext.ts';
 import { SERVER_DEFAULT_RANGE } from '@/lib/serverFormat.ts';
@@ -65,15 +69,50 @@ export const ServerDetailPage = observer(() => {
   const everLoadedRef = useRef(false);
 
   /**
-   * task15 接线点：四个操作只置位页面 state（弹窗 / 写操作本体属 task15）。
-   * store 侧已就绪：updateServer（名称 / 备注 / 分组 / paused）、resetServerToken
-   * （旧 Token 立即失效、新明文仅此次返回）、deleteServer（级联删历史数据）。
-   * 与 task11 添加按钮同款处理：不挂死逻辑、不放「开发中」toast。
+   * 四个操作的挂载（task15）：编辑 / 重置 Token / 删除各自打开弹窗，暂停 / 恢复是直接
+   * 动作（原型即直接切换 + toast，无二次确认）。store 侧已就绪：updateServer（名称 /
+   * 备注 / 分组 / paused）、resetServerToken（旧 Token 立即失效、新明文仅此次返回）、
+   * deleteServer（级联删历史数据）。
    */
   const [editOpen, setEditOpen] = useState(false);
+  /** 暂停 / 恢复无弹窗：pauseOpen 兼任「进行中」守卫，防止连点产生并发 PATCH */
   const [pauseOpen, setPauseOpen] = useState(false);
   const [resetTokenOpen, setResetTokenOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+
+  /**
+   * 手动刷新 detail + 指标（编辑 / 暂停 / 重置 Token 写操作后）：轮询 effect 依赖本 key，
+   * 变化即重跑 effect（立即重拉一次并重启 30s 轮询），不必在 effect 外再维护一份拉取逻辑。
+   */
+  const [detailReloadKey, setDetailReloadKey] = useState(0);
+  const reloadDetail = useCallback(() => setDetailReloadKey((key) => key + 1), []);
+
+  /**
+   * 暂停 / 恢复（PRD §5.1：暂停期间不做离线判定，状态固定「已暂停」，历史数据保留）。
+   * PATCH 只带 paused 一个字段——后端未传字段保持原值，不会把名称 / 分组冲掉；
+   * 成功后重拉 detail：状态徽章与提示条都依赖它（列表刷新已由 store 负责）。
+   */
+  const handleTogglePause = async () => {
+    if (!detail || pauseOpen) {
+      return;
+    }
+    setPauseOpen(true);
+
+    try {
+      const nextPaused = !detail.server.paused;
+      const ok = await store.updateServer(detail.server.id, { paused: nextPaused });
+      // 失败保持原状：store 已按后端 message toast
+      if (!ok) {
+        return;
+      }
+      toast.success(nextPaused ? `已暂停「${detail.server.name}」的监控` : `已恢复「${detail.server.name}」的监控`, {
+        position: 'top-center',
+      });
+      reloadDetail();
+    } finally {
+      setPauseOpen(false);
+    }
+  };
 
   // 直接进入详情（非列表跳转）时没有历史记录，退回服务器列表
   const goBack = () => {
@@ -165,7 +204,8 @@ export const ServerDetailPage = observer(() => {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [store, serverID, validID, range]);
+    // detailReloadKey 变化 = 写操作后手动刷新：立即重拉一次并重启轮询
+  }, [store, serverID, validID, range, detailReloadKey]);
 
   const backButton = (
     <div className="flex items-center gap-2">
@@ -229,7 +269,7 @@ export const ServerDetailPage = observer(() => {
                 server={detail.server}
                 snapshot={snapshot}
                 onEdit={() => setEditOpen(true)}
-                onTogglePause={() => setPauseOpen(true)}
+                onTogglePause={() => void handleTogglePause()}
                 onResetToken={() => setResetTokenOpen(true)}
                 onDelete={() => setDeleteOpen(true)}
               />
@@ -269,14 +309,28 @@ export const ServerDetailPage = observer(() => {
         </div>
       </div>
 
-      {/* task15 接线点：编辑弹窗（名称 / 备注 / 分组，原型暂未覆盖需补齐）挂载处，store.updateServer 已就绪 */}
-      {editOpen && null}
-      {/* task15 接线点：暂停 / 恢复动作挂载处（store.updateServer({ paused }) + 重拉详情；原型为直接切换 + toast） */}
-      {pauseOpen && null}
-      {/* task15 接线点：重置 Token 弹窗挂载处（二次确认 + 一次性明文 Token 与安装命令，store.resetServerToken 已就绪） */}
-      {resetTokenOpen && null}
-      {/* task15 接线点：删除确认弹窗挂载处（历史数据级联删除，store.deleteServer 已就绪） */}
-      {deleteOpen && null}
+      {/* 编辑弹窗（名称 / 备注 / 分组，原型暂未覆盖由本任务补齐）：保存成功后重拉详情 */}
+      <ServerFormDialog
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        server={detail?.server ?? null}
+        onSaved={reloadDetail}
+      />
+      {/* 暂停 / 恢复为直接动作（见 handleTogglePause），无弹窗挂载 */}
+      {/* 重置 Token 弹窗：二次确认 → 新 Token 明文与安装命令一次性展示（与添加弹窗共用 ServerTokenGuide） */}
+      <ServerResetTokenDialog
+        open={resetTokenOpen}
+        onOpenChange={setResetTokenOpen}
+        server={detail?.server ?? null}
+        onCompleted={reloadDetail}
+      />
+      {/* 删除确认弹窗：历史数据级联删除，确认后跳回列表（store 已负责刷新列表） */}
+      <ServerDeleteDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        server={detail?.server ?? null}
+        onDeleted={() => navigate('/servers')}
+      />
     </Dashboard>
   );
 });

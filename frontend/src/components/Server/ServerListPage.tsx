@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Dashboard } from '@/layouts/Dashboard.tsx';
 import { ServerCard } from '@/components/Server/ServerCard.tsx';
 import { ServerEmptyState } from '@/components/Server/ServerEmptyState.tsx';
+import { ServerFormDialog } from '@/components/Server/ServerFormDialog.tsx';
 import { ServerToolbar } from '@/components/Server/ServerToolbar.tsx';
 import { Skeleton } from '@/components/ui/skeleton.tsx';
 import { StoreContext } from '@/store/storeContext.ts';
@@ -31,8 +32,8 @@ export const ServerListPage = observer(() => {
   // 缺省「状态（在线优先）」：与后端 parseSort 的缺省方向一致
   const [sortKey, setSortKey] = React.useState(SERVER_SORTS[0].value);
   /**
-   * 添加服务器弹窗挂载点：完整弹窗（名称 / 备注 / 分组 + Token 与安装命令一次性展示）属 task15，
-   * store.createServer 已就绪（task9）。本任务只置位 state，不渲染弹窗本体。
+   * 添加服务器弹窗（task15，ServerFormDialog）：新建成功后同一弹窗内切换到安装指引态
+   * （Token 明文与安装命令仅此一次展示）；store.createServer 内部已刷新列表。
    */
   const [addDialogOpen, setAddDialogOpen] = React.useState(false);
 
@@ -104,9 +105,8 @@ export const ServerListPage = observer(() => {
           )}
         </div>
       </div>
-      {/* task15 接线点：添加弹窗挂载处（open={addDialogOpen} onOpenChange={setAddDialogOpen}），
-          store.createServer 已就绪；本任务仅置位 state，不渲染弹窗本体 */}
-      {addDialogOpen && null}
+      {/* 添加弹窗常驻挂载：新建成功同窗展示 Token 与安装命令（仅此一次），关闭即清理内存态 */}
+      <ServerFormDialog open={addDialogOpen} onOpenChange={setAddDialogOpen} />
     </Dashboard>
   );
 });

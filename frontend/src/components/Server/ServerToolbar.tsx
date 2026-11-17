@@ -87,8 +87,7 @@ export const ServerToolbar = ({ search, onSearchChange, sortKey, onSortChange, o
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {/* onAdd 目前只置位添加弹窗 state：完整弹窗（名称 / 备注 / 分组 + Token 与安装命令一次性展示）属 task15，
-            store.createServer 已就绪（task9），届时在本按钮的 onOpenChange 上挂 ServerFormDialog 即可 */}
+        {/* onAdd 打开 ServerFormDialog（task15）：新建成功后同窗展示 Token 明文与安装命令（仅此一次） */}
         <Button variant="default" onClick={onAdd}>
           <PlusIcon />
           <span className="hidden @xl/main:inline-block">添加服务器</span>

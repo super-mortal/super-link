@@ -12,7 +12,7 @@ type ServerDetailHeaderProps = {
    * 为 null，头部不渲染这两项（PRD §5.5「在线时展示」）。
    */
   snapshot: ServerMetricsPointType | null;
-  /** 四个操作目前只置位页面 state：弹窗 / 写操作本体属 task15 接线（store 方法已就绪） */
+  /** 四个操作：编辑 / 重置 Token / 删除打开对应弹窗，暂停 / 恢复是直接动作（task15 接线到 store） */
   onEdit: () => void;
   onTogglePause: () => void;
   onResetToken: () => void;

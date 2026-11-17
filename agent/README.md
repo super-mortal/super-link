@@ -14,8 +14,23 @@ agent 启动后主动外连 Hub 并保持长连接（长轮询语义），按 Hu
 | `config.go` | 配置：`/etc/link-agent/config`（KEY=VALUE）+ 环境变量覆盖 |
 | `backoff.go` | 指数退避重连框架（初始 1s、倍数 2、上限 60s、±20% 抖动） |
 | `backoff_test.go` | 退避框架单元测试（`go test ./...`） |
+| `cpu.go` | CPU 采集器：`/proc/stat` 两次采样增量（首采样报 0、计数器重置重建基线，PRD §5.3 口径） |
+| `memory.go` | 内存 / Swap 采集器：`/proc/meminfo`（gopsutil Used 口径 + buff/cache + Swap） |
+| `disk.go` | 磁盘采集器：`df -P -k` 拿数字 + `/proc/self/mountinfo` 拿 fstype 与 major:minor（排除清单 + bind mount 去重） |
+| `network.go` | 网络采集器：`/proc/net/dev` 增量 ÷ 实际间隔得速率（NICS 白/黑名单预留扩展点） |
+| `load.go` | 负载采集器：`/proc/loadavg` 前三列 |
+| `uptime.go` | 开机时长采集器：`/proc/uptime` 第一列 |
+| `system.go` | 系统信息采集器：`/etc/os-release`（PRETTY_NAME）+ 内核版本 + 核数 + 架构 |
+| `snapshot.go` | `Snapshot` 结构体（JSON 字段与后端 report 白名单逐字段对齐）+ `Collector.CollectAll()` 全量采集 |
+| `cpu_test.go` / `memory_test.go` / `disk_test.go` / `network_test.go` / `load_test.go` / `uptime_test.go` / `system_test.go` | 采集器纯函数单测（fixture 字符串，不依赖真实 `/proc`） |
 | `link-agent.service` | systemd unit 模板（与 `install-agent.sh` 内嵌 unit 一致，改一边必须改另一边） |
 | `install-agent.sh` | 被监控机安装脚本（单一事实源，Hub 经 `/content/install-agent` 下发） |
+
+采集器全部经标准库读 `/proc` 与执行 `df`，**不写 `//go:build linux`**：Windows
+开发机上 `go vet` / `go test` / 交叉编译均可通过，非 Linux 运行期因数据源缺失
+而降级（零值 + 日志）；agent 按决策 D8 只部署在 Linux。Docker 采集（task18）
+填充 `snapshot.go` 的 `Docker` 字段；task19 把 `Collector.CollectAll` 接入
+`main.go` `connectOnce` 的 collect 指令处理。
 
 ## 构建
 

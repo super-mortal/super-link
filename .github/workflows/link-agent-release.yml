@@ -1,0 +1,91 @@
+name: 构建并发布 link-agent 二进制
+
+# 触发方式：与 docker-publish.yml 相同——推送 v 开头的标签（如 v0.0.7）时，
+# 交叉编译 linux/amd64 与 linux/arm64 两个静态二进制并上传到同一 GitHub
+# Release（决策 D12：link-agent 随 super-link 主版本同 tag 发布，不做独立版本线，
+# 也就不存在 agent 与 Hub 的兼容矩阵）。
+#
+# 为何独立 workflow 而不并入 docker-publish.yml：
+#   1. Go 构建与 Docker 镜像构建互不依赖，分开后两条流水线可并行、互不阻塞；
+#   2. 完全不动现有镜像流程（触发条件、缓存策略、Release 创建方式保持原样），
+#      回归风险为零；
+#   3. Release 仍由 docker-publish.yml 的 softprops/action-gh-release 统一创建
+#      （发布说明取 docs/releases/<tag>.md），本 workflow 只追加上传资产，
+#      避免两个 workflow 竞争创建 / 覆写同一 Release。
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    name: link-agent linux/${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    permissions:
+      # 上传 Release 资产必需（secrets.GITHUB_TOKEN 经 gh release upload 使用）
+      contents: write
+    strategy:
+      # 两架构各自上传独立资产，不因一者失败而取消另一者
+      fail-fast: false
+      matrix:
+        goarch: [amd64, arm64]
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Go
+        # agent/go.mod 声明 go 1.23 保守下限（其注释定稿：CI 安装 ≥1.23 即可
+        # 构建），取 ~1.23 与该下限匹配；不追 stable 是为避免 runner 镜像缺少
+        # 对应 toolchain 时触发自动下载
+        uses: actions/setup-go@v5
+        with:
+          go-version: '~1.23'
+
+      - name: 构建 link-agent（linux/${{ matrix.goarch }}）
+        # agent/ 是仓库内的独立 Go module（go.mod 就在 agent/ 下），必须在其
+        # 目录内构建，在仓库根执行 go build 会因找不到 go.mod 而失败；
+        # CGO_ENABLED=0 静态编译（决策 D2 零依赖，与 glibc 版本无关）；
+        # 版本号经 -ldflags 注入 main.version（D12：Hub 详情页对比自身与
+        # agent 版本、落后时提示升级；未注入则为 dev）；
+        # 产物名 link-agent-linux-<arch> 与 install-agent.sh 的下载资产名
+        # （ASSET="${BIN_NAME}-linux-${ARCH}"）逐字对应，缺一即安装失败
+        working-directory: agent
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=${{ matrix.goarch }} \
+            go build -ldflags "-X main.version=${{ github.ref_name }}" \
+            -o link-agent-linux-${{ matrix.goarch }} .
+
+      - name: 生成 SHA-256 校验文件
+        # 格式依据 install-agent.sh 校验段：取 .sha256 首行第一个空白分隔字段
+        # 解析期望摘要，兼容「纯摘要」与 sha256sum 标准输出「摘要  文件名」
+        # 两种格式；此处产出标准 sha256sum 输出，与脚本注释中的示例
+        # （sha256sum link-agent-linux-amd64 > link-agent-linux-amd64.sha256）
+        # 逐字一致。校验文件缺失或格式不符时脚本拒绝安装（task4 定稿策略），
+        # 因此 CI 必须为每个架构都产出同名 .sha256
+        working-directory: agent
+        run: |
+          sha256sum link-agent-linux-${{ matrix.goarch }} > link-agent-linux-${{ matrix.goarch }}.sha256
+          cat link-agent-linux-${{ matrix.goarch }}.sha256
+
+      - name: 上传二进制与校验文件到 GitHub Release
+        # Release 由 docker-publish.yml 的 softprops/action-gh-release 创建，
+        # 本 workflow 只追加上传（gh release upload），不参与创建，避免竞争；
+        # 两个 workflow 由同一次 tag push 并发触发，而 Release 要到镜像构建
+        # 完成后才创建，gh release upload 在 Release 不存在时报错，故轮询
+        # 等待其出现（最多约 10 分钟，覆盖镜像构建时长）；
+        # --clobber：同一 tag 重跑工作流时可覆盖同名旧资产，保证幂等
+        run: |
+          for i in $(seq 1 30); do
+            if gh release upload "$GITHUB_REF_NAME" \
+              agent/link-agent-linux-${{ matrix.goarch }} \
+              agent/link-agent-linux-${{ matrix.goarch }}.sha256 --clobber; then
+              echo "已上传 link-agent-linux-${{ matrix.goarch }} 及 .sha256 到 Release $GITHUB_REF_NAME"
+              exit 0
+            fi
+            echo "Release 尚不存在或上传失败（第 ${i}/30 次），20 秒后重试……"
+            sleep 20
+          done
+          echo "::error::等待 GitHub Release 超时（约 10 分钟），未上传 link-agent 资产，请重跑本工作流"
+          exit 1
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

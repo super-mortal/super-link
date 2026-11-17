@@ -21,16 +21,19 @@ agent 启动后主动外连 Hub 并保持长连接（长轮询语义），按 Hu
 | `load.go` | 负载采集器：`/proc/loadavg` 前三列 |
 | `uptime.go` | 开机时长采集器：`/proc/uptime` 第一列 |
 | `system.go` | 系统信息采集器：`/etc/os-release`（PRETTY_NAME）+ 内核版本 + 核数 + 架构 |
+| `docker.go` | Docker 采集器：Docker Engine API `/containers/json` + `/containers/{id}/stats?stream=false`（容器 CPU = cpu 增量 ÷ system 增量 × 100 不乘核数；内存 = usage − inactive_file；网络 = 各接口累计增量求和速率；不可用留空，PRD §5.3 口径） |
 | `snapshot.go` | `Snapshot` 结构体（JSON 字段与后端 report 白名单逐字段对齐）+ `Collector.CollectAll()` 全量采集 |
-| `cpu_test.go` / `memory_test.go` / `disk_test.go` / `network_test.go` / `load_test.go` / `uptime_test.go` / `system_test.go` | 采集器纯函数单测（fixture 字符串，不依赖真实 `/proc`） |
+| `cpu_test.go` / `memory_test.go` / `disk_test.go` / `network_test.go` / `load_test.go` / `uptime_test.go` / `system_test.go` / `docker_test.go` | 采集器纯函数单测（fixture 字符串，不依赖真实 `/proc`；docker_test 用 httptest 注入 BaseURL，不碰真实 socket） |
 | `link-agent.service` | systemd unit 模板（与 `install-agent.sh` 内嵌 unit 一致，改一边必须改另一边） |
 | `install-agent.sh` | 被监控机安装脚本（单一事实源，Hub 经 `/content/install-agent` 下发） |
 
 采集器全部经标准库读 `/proc` 与执行 `df`，**不写 `//go:build linux`**：Windows
 开发机上 `go vet` / `go test` / 交叉编译均可通过，非 Linux 运行期因数据源缺失
 而降级（零值 + 日志）；agent 按决策 D8 只部署在 Linux。Docker 采集（task18）
-填充 `snapshot.go` 的 `Docker` 字段；task19 把 `Collector.CollectAll` 接入
-`main.go` `connectOnce` 的 collect 指令处理。
+经 Docker Engine API 填充 `snapshot.go` 的 `Docker` 字段：unix socket 连接同样
+不写构建标签（`net.Dial("unix", ...)` 在 Windows 上可编译，运行期拨号失败即走
+「不可用留空」降级）；task19 把 `Collector.CollectAll` 接入 `main.go`
+`connectOnce` 的 collect 指令处理。
 
 ## 构建
 

@@ -9,8 +9,8 @@
 package main
 
 // DockerContainer Docker 容器指标（字段与 AgentReportController::parseDocker
-// 白名单一致）。本任务（task17）不采集 Docker：CollectAll 留空切片，task18
-// 经 Docker Engine API 填充（不可用时同样留空，不影响其余指标——PRD §5.3）。
+// 白名单一致）。采集实现见 docker.go（Docker Engine API；不可用时同样留空，
+// 不影响其余指标——PRD §5.3）。
 type DockerContainer struct {
 	Container string  `json:"container"`
 	Cpu       float64 `json:"cpu"`
@@ -38,7 +38,7 @@ type Snapshot struct {
 	Uptime    uint64  `json:"uptime"`     // 开机秒数
 
 	Disks  []DiskUsage       `json:"disks"`  // 各挂载点 used / total
-	Docker []DockerContainer `json:"docker"` // task18 填充，本任务留空切片
+	Docker []DockerContainer `json:"docker"` // Docker Engine API 采集，见 docker.go
 
 	// 系统信息（servers 冗余列；Hub 侧「传入即覆盖」，见 parseSystemInfo 注释）
 	Os           string `json:"os"`            // 发行版（/etc/os-release PRETTY_NAME）
@@ -56,13 +56,18 @@ type Snapshot struct {
 // 次 CollectAll（CPU / 网络自第二次采样起才是真实值，首采样按 PRD §5.3
 // 报 0 并建立基线）。
 type Collector struct {
-	cpu *CPUSampler
-	net *NetworkSampler
+	cpu    *CPUSampler
+	net    *NetworkSampler
+	docker *DockerCollector
 }
 
 // NewCollector 构造采集器
 func NewCollector() *Collector {
-	return &Collector{cpu: NewCPUSampler(), net: NewNetworkSampler()}
+	return &Collector{
+		cpu:    NewCPUSampler(),
+		net:    NewNetworkSampler(),
+		docker: NewDockerCollector(),
+	}
 }
 
 // CollectAll 组装一次全量快照
@@ -93,7 +98,7 @@ func (c *Collector) CollectAll() Snapshot {
 		NetTx:        net.Tx,
 		Uptime:       collectUptime(),
 		Disks:        collectDisks(),
-		Docker:       []DockerContainer{},
+		Docker:       c.docker.Collect(),
 		Os:           system.Os,
 		Kernel:       system.Kernel,
 		Cores:        system.Cores,

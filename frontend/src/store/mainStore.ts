@@ -53,6 +53,13 @@ import { preferencesStore } from './preferencesStore.ts';
  */
 const tagModuleOf = (module: ModuleKey): 'bookmarks' | 'skills' => (module === 'skills' ? 'skills' : 'bookmarks');
 
+/**
+ * 更新成功的一次性结果键。
+ * ReleaseNotesDialog 在检测到新版本、刷新页面前写入 { from, to }，
+ * 刷新后由 getAppInfo() 消费并提示，读取后立即删除，避免重复弹窗。
+ */
+export const UPDATE_RESULT_KEY = 'super-link:update-result';
+
 class MainStore {
   prefStore: typeof preferencesStore;
   items: ItemType[] = [];
@@ -1358,7 +1365,47 @@ class MainStore {
     }
 
     this.appInfo = response.data;
+    // 更新成功后的首次加载：消费一次性结果并提示
+    this.consumeUpdateResult();
     return response.data;
+  };
+
+  /**
+   * 消费「更新成功」的一次性结果。
+   * 只有本次真正拉到的 installed_version 等于弹窗记录的目标版本才提示，
+   * 防止刷新落空（例如用户手动刷新了中间态页面）造成虚假的成功提示。
+   */
+  consumeUpdateResult = () => {
+    let raw: string | null = null;
+    try {
+      raw = sessionStorage.getItem(UPDATE_RESULT_KEY);
+    } catch {
+      return; // sessionStorage 不可用（隐私模式等）时静默跳过
+    }
+    if (!raw) {
+      return;
+    }
+
+    try {
+      sessionStorage.removeItem(UPDATE_RESULT_KEY);
+    } catch {
+      // 删除失败不影响后续判断，下次仍会因版本已更新而自然不再提示
+    }
+
+    let expected: { from?: string | null; to?: string | null } | null = null;
+    try {
+      expected = JSON.parse(raw);
+    } catch {
+      return;
+    }
+
+    const installed = this.appInfo?.installed_version ?? null;
+    if (installed && expected?.to && installed === expected.to) {
+      // 稍作延迟，确保初始化流程中 Toaster 已完成挂载，避免提示丢失
+      window.setTimeout(() => {
+        toast.success(`已更新到 v${installed}`, { position: 'top-center' });
+      }, 300);
+    }
   };
 
   updateApp = async () => {

@@ -36,33 +36,15 @@ const links = [
 
 export const SettingsAbout = observer(() => {
   const store = React.useContext(StoreContext);
-  const [updateTriggered, setUpdateTriggered] = React.useState(false);
-  const [reloadCountdown, setReloadCountdown] = React.useState(5);
   const [isReleaseNotesOpen, setIsReleaseNotesOpen] = React.useState(false);
 
   const publishedAt = formatReleaseDate(store.appInfo?.latest_release?.published_at);
 
-  // 触发更新：由「更新内容」弹窗二次确认后调用，沿用既有 POST /api/app/update（Watchtower）链路
+  // 触发更新：由「更新内容」弹窗在进度流程中调用；进度、超时与刷新后的提示都由弹窗负责
   const triggerUpdate = async () => {
     const triggered = await store.updateApp();
-    if (triggered) {
-      setUpdateTriggered(true);
-    }
-    return triggered;
+    return Boolean(triggered);
   };
-
-  // 更新触发后倒计时自动刷新页面（等待新容器就绪）
-  React.useEffect(() => {
-    if (!updateTriggered) {
-      return;
-    }
-    if (reloadCountdown <= 0) {
-      window.location.reload();
-      return;
-    }
-    const timer = setTimeout(() => setReloadCountdown((prev) => prev - 1), 1000);
-    return () => clearTimeout(timer);
-  }, [updateTriggered, reloadCountdown]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -73,23 +55,15 @@ export const SettingsAbout = observer(() => {
           <div className="text-base font-medium">版本 {store.appInfo?.installed_version ?? '0.0.1'}</div>
           {store.appInfo?.update_available && (
             <div className="flex flex-col items-center gap-1.5">
-              {updateTriggered ? (
-                <p className="text-muted-foreground text-sm">
-                  更新已触发，应用正在重启，{reloadCountdown} 秒后自动刷新...
-                </p>
-              ) : (
-                <>
-                  <p className="text-muted-foreground text-sm">
-                    可更新至 v{store.appInfo?.latest_version ?? ''}
-                    {publishedAt ? ` · 发布于 ${publishedAt}` : ''}
-                  </p>
-                  {/* 更新前先看更新说明：打开弹窗查看版本与变更内容，二次确认后才触发更新（PRD O-4） */}
-                  <Button variant="default" size="sm" onClick={() => setIsReleaseNotesOpen(true)}>
-                    <FileText />
-                    查看更新内容
-                  </Button>
-                </>
-              )}
+              <p className="text-muted-foreground text-sm">
+                可更新至 v{store.appInfo?.latest_version ?? ''}
+                {publishedAt ? ` · 发布于 ${publishedAt}` : ''}
+              </p>
+              {/* 更新前先看更新说明：打开弹窗查看版本与变更内容，确认后才触发更新（PRD O-4） */}
+              <Button variant="default" size="sm" onClick={() => setIsReleaseNotesOpen(true)}>
+                <FileText />
+                查看更新内容
+              </Button>
             </div>
           )}
         </div>

@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/sidebar.tsx';
 import * as React from 'react';
 import { observer } from 'mobx-react-lite';
-import { Bookmark, KeyRound, Lock, ServerCog, Sparkles } from 'lucide-react';
+import { Bookmark, KeyRound, Lock, Server, Sparkles } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { StoreContext, VaultStoreContext } from '@/store/storeContext.ts';
 import { useItemListState } from '@/hooks/useItemListState.ts';
@@ -114,7 +114,7 @@ export const ModuleSwitcher = observer(() => {
               isActive={isServersRoute}
               className={'min-w-8 duration-200 ease-linear'}
             >
-              <ServerCog />
+              <Server />
               <span>服务器</span>
             </SidebarMenuButton>
             <SidebarMenuBadge>{store.servers.length}</SidebarMenuBadge>

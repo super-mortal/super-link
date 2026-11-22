@@ -2,7 +2,7 @@ import { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { toast } from 'sonner';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, ServerCog } from 'lucide-react';
+import { ArrowLeft, Server } from 'lucide-react';
 import { Button } from '@/components/ui/button.tsx';
 import { Card, CardContent } from '@/components/ui/card.tsx';
 import { Dashboard } from '@/layouts/Dashboard.tsx';
@@ -241,7 +241,7 @@ export const ServerDetailPage = observer(() => {
   const notFoundCard = (invalid: boolean) => (
     <Card className="max-w-md">
       <CardContent className="flex flex-col items-center gap-4 py-10">
-        <ServerCog className="text-muted-foreground size-10" aria-hidden="true" />
+        <Server className="text-muted-foreground size-10" aria-hidden="true" />
         <p className="text-muted-foreground text-sm">{invalid ? '服务器 ID 无效' : '服务器不存在或加载失败'}</p>
         <Button variant="outline" onClick={goBack}>
           <ArrowLeft />

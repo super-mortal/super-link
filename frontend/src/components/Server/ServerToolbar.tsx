@@ -1,5 +1,5 @@
 import type { KeyboardEvent } from 'react';
-import { ArrowDownUp, Check, PlusIcon, SearchIcon, ServerCog, X } from 'lucide-react';
+import { ArrowDownUp, Check, PlusIcon, SearchIcon, Server, X } from 'lucide-react';
 import { Button } from '@/components/ui/button.tsx';
 import {
   DropdownMenu,
@@ -40,7 +40,7 @@ export const ServerToolbar = ({ search, onSearchChange, sortKey, onSortChange, o
   return (
     <header className="bg-background sticky top-0 z-50 flex h-14 w-full items-center gap-1.5 border-b px-4">
       <SidebarToggler />
-      <ServerCog className="h-4 w-4" />
+      <Server className="h-4 w-4" />
       <span className="text-sm font-medium">服务器</span>
 
       <InputGroup className="ml-1 max-w-72 min-w-0 flex-1">

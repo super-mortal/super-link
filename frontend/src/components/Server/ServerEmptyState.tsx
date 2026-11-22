@@ -1,4 +1,4 @@
-import { PlusIcon, ServerCog } from 'lucide-react';
+import { PlusIcon, Server } from 'lucide-react';
 import { Button } from '@/components/ui/button.tsx';
 
 type ServerEmptyStateProps = {
@@ -23,7 +23,7 @@ export const ServerEmptyState = ({ variant, onAdd, onClearSearch, onClearGroup }
       <div className="flex h-full items-center justify-center px-4">
         <div className="flex max-w-[26rem] flex-col items-center gap-3 py-8 text-center">
           <div className="bg-secondary text-muted-foreground flex size-12 items-center justify-center rounded-lg">
-            <ServerCog className="size-6" />
+            <Server className="size-6" />
           </div>
           <h3 className="text-base font-semibold">还没有监控任何服务器</h3>
           <p className="text-muted-foreground text-[13px] leading-relaxed">

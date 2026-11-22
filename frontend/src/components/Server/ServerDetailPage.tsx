@@ -114,6 +114,26 @@ export const ServerDetailPage = observer(() => {
     }
   };
 
+  /**
+   * 备注卡内联保存（refinements §3）：PATCH 只带 note，未传字段保持原值；
+   * 空串等价清空（后端 ServerPayload::optionalText 允许空串，列 NOT NULL DEFAULT ''）。
+   * 成功提示由 store.updateServer 按后端 message（「服务器更新成功」）负责，这里不再
+   * 重复 toast；成功后重拉详情让备注卡回到展示态。失败返回 false，卡片保留编辑态。
+   */
+  const handleSaveNote = async (note: string) => {
+    if (!detail) {
+      return false;
+    }
+
+    const ok = await store.updateServer(detail.server.id, { note });
+    if (!ok) {
+      return false;
+    }
+
+    reloadDetail();
+    return true;
+  };
+
   // 直接进入详情（非列表跳转）时没有历史记录，退回服务器列表
   const goBack = () => {
     if (location.key === 'default') {
@@ -296,7 +316,9 @@ export const ServerDetailPage = observer(() => {
                       网络）；detail.docker 随 30s 轮询自动刷新，空态二分见组件注释 */}
                   <ServerDockerSection containers={detail.docker} hasReported={detail.server.last_report_at !== null} />
 
-                  <ServerNoteCard note={detail.server.note} />
+                  {/* 备注卡（refinements §3）：常驻，空态给「添加」、有备注给「编辑」；
+                      内联保存走 handleSaveNote（updateServer({ note }) + 重拉详情） */}
+                  <ServerNoteCard note={detail.server.note} onSave={handleSaveNote} />
                 </div>
 
                 <div className="flex flex-col gap-4">

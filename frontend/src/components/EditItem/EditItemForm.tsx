@@ -254,6 +254,8 @@ const EditItemForm = observer(
             </h2>
             {!item && <DuplicatesList url={urlForDuplicatesCheck} />}
             <div className="space-y-4 py-4">
+              <div className="grid gap-3">{renderTextField('title', '标题')}</div>
+
               <div className="grid gap-3">
                 <FormField
                   control={form.control}
@@ -292,8 +294,6 @@ const EditItemForm = observer(
                   }}
                 />
               </div>
-
-              <div className="grid gap-3">{renderTextField('title', '标题')}</div>
 
               <div className="grid gap-3">{renderTextareaField('description', '描述')}</div>
 

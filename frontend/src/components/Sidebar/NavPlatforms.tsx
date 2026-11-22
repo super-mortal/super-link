@@ -1,28 +1,27 @@
 import * as React from 'react';
 import { observer } from 'mobx-react-lite';
 import { toast } from 'sonner';
-import {
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarMenu,
-  SidebarMenuBadge,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  useSidebar,
-} from '@/components/ui/sidebar.tsx';
+
+import { SidebarMenu, useSidebar } from '@/components/ui/sidebar.tsx';
+import { SidebarFilterRow } from '@/components/Sidebar/SidebarFilterRow.tsx';
+import { SidebarSection } from '@/components/Sidebar/SidebarSection.tsx';
 import { MODULES } from '@/lib/modules.ts';
+import { platformBrandColorClass } from '@/lib/accountFormat.ts';
 import { useAccountListState } from '@/hooks/useAccountListState.ts';
 import { StoreContext, VaultStoreContext } from '@/store/storeContext.ts';
 
 /**
- * 侧栏「平台」分区（PRD §5.1）。
+ * 侧栏「平台」分区（PRD §5.1 / refinements.md §2.1~§2.3）。
  *
  * 只列平台标签 + 该平台账号数，按数量降序；不提供「全部账号 / 收藏 / 需要处理」
- * 等额外快捷视图（PRD §13）。点击进入筛选，再点一次取消。
+ * 等额外快捷视图（PRD §13），也不渲染「全部」行（O-14）：无平台筛选时列表无高亮，
+ * 点击写入筛选、再点同一平台取消筛选。
  *
  * 计数从已加载账号数据派生，且锁定态也可见：账号列表接口返回的只是元数据与密文，
  * 平台名与条数不含任何账号内容（PRD §10.1）；锁定态点击筛选统一提示先解锁。
+ *
+ * 行内品牌色点只做视觉识别、不参与筛选；颜色取值统一走 accountFormat.platformBrandColorClass，
+ * 与账号卡片品牌头像共用一份映射，这里不再写平台 → 颜色的 map。
  */
 export const NavPlatforms = observer(() => {
   const store = React.useContext(StoreContext);
@@ -64,33 +63,23 @@ export const NavPlatforms = observer(() => {
   };
 
   return (
-    <SidebarGroup className="border-sidebar-border mt-1 gap-2 border-t">
-      <div className="me-1 flex items-center justify-end gap-2">
-        <SidebarGroupLabel className="me-auto">{MODULES.accounts.sectionLabel}</SidebarGroupLabel>
-      </div>
-
-      <SidebarGroupContent className="flex flex-col gap-2">
-        {/* 不再渲染「全部」行（PRD O-14）：无平台筛选时列表无高亮，再点同一平台取消筛选 */}
-        {platformCounts.length > 0 ? (
-          <SidebarMenu>
-            {platformCounts.map(({ name, count }) => (
-              <SidebarMenuItem key={name}>
-                <SidebarMenuButton
-                  onClick={() => selectPlatform(name)}
-                  isActive={platform === name}
-                  className="ps-8"
-                  title={name}
-                >
-                  <span className="line-clamp-1 break-all">{name}</span>
-                </SidebarMenuButton>
-                <SidebarMenuBadge>{count}</SidebarMenuBadge>
-              </SidebarMenuItem>
-            ))}
-          </SidebarMenu>
-        ) : (
-          <p className="text-muted-foreground px-2 text-xs">暂无账号</p>
-        )}
-      </SidebarGroupContent>
-    </SidebarGroup>
+    <SidebarSection label={MODULES.accounts.sectionLabel}>
+      {platformCounts.length > 0 ? (
+        <SidebarMenu>
+          {platformCounts.map(({ name, count }) => (
+            <SidebarFilterRow
+              key={name}
+              label={name}
+              count={count}
+              dotClass={platformBrandColorClass(name)}
+              isActive={platform === name}
+              onClick={() => selectPlatform(name)}
+            />
+          ))}
+        </SidebarMenu>
+      ) : (
+        <p className="text-muted-foreground px-2 text-xs">暂无账号</p>
+      )}
+    </SidebarSection>
   );
 });

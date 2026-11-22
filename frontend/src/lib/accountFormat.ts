@@ -84,42 +84,52 @@ export const isAccountPending = (account: AccountType): boolean => {
 };
 
 /**
- * 平台 → 品牌色映射（refinements.md §2.2 / §3）。
+ * 平台 → 品牌映射（refinements.md §2.2 / §3）。
  *
  * 品牌色是**有意的例外**：它是品牌识别色，不参与主题 token 体系（不随 light / dark
  * 语义变量走），只用于侧栏平台色点与账号卡片品牌头像的视觉识别，**不参与筛选逻辑**。
- * 全项目只允许这一份映射：NavPlatforms 与账号卡片都必须调用 platformBrandColorClass，
- * 禁止在组件里再写一份 switch / map（否则同一平台会出现两种颜色）。
+ * 全项目只允许这一份映射：NavPlatforms 与账号卡片都必须调用这里导出的函数，
+ * 禁止在组件里再写一份 switch / map（否则同一平台会出现两种颜色 / 两种图标）。
+ *
+ * brandKey 供品牌 Logo 使用（`AccountAvatar` 据此选图标），colorClass 供色点与
+ * 未知平台头像底色使用；两者同源，避免规则漂移。
  *
  * 用 Tailwind 调色板类而非十六进制：暗色主题下深色品牌色不可见，需要换成浅一档，
  * 与 serverFormat.ts 的 SERVER_STATUS 同一口径；调用方不再追加 dark: 变体。
  */
-const PLATFORM_BRAND_RULES: { aliases: string[]; colorClass: string }[] = [
-  { aliases: ['github'], colorClass: 'bg-neutral-800 dark:bg-neutral-200' },
-  { aliases: ['google', 'gmail'], colorClass: 'bg-blue-500' },
-  { aliases: ['microsoft', 'outlook', 'azure'], colorClass: 'bg-blue-600' },
-  { aliases: ['x', 'twitter'], colorClass: 'bg-neutral-500 dark:bg-neutral-400' },
+export type PlatformBrandKey = 'github' | 'google' | 'microsoft' | 'x';
+
+const PLATFORM_BRAND_RULES: { brandKey: PlatformBrandKey; aliases: string[]; colorClass: string }[] = [
+  { brandKey: 'github', aliases: ['github'], colorClass: 'bg-neutral-800 dark:bg-neutral-200' },
+  { brandKey: 'google', aliases: ['google', 'gmail'], colorClass: 'bg-blue-500' },
+  { brandKey: 'microsoft', aliases: ['microsoft', 'outlook', 'azure'], colorClass: 'bg-blue-600' },
+  { brandKey: 'x', aliases: ['x', 'twitter'], colorClass: 'bg-neutral-500 dark:bg-neutral-400' },
 ];
 
 /** 未知平台的中性回退色：固定值，不用随机色（同一平台每次渲染颜色必须一致） */
 export const PLATFORM_BRAND_FALLBACK_CLASS = 'bg-muted-foreground';
 
 /**
- * 平台名 → 品牌色类（色点 / 品牌头像背景共用）。
+ * 品牌规则匹配的唯一入口（色点与品牌 Logo 共用）。
  *
  * 归一化：去首尾空格 + 转小写；按别名做「等值或前缀 + 空格」匹配，
- * 兼容「GitHub Enterprise」「Google Workspace」「Microsoft 365」这类带后缀的平台名。
- * 不认识的平台回退中性色。
+ * 兼容「GitHub Enterprise」「Google Workspace」「Microsoft 365」「Twitter (X)」这类带后缀的平台名。
  */
-export const platformBrandColorClass = (platform: string): string => {
+const matchPlatformBrandRule = (platform: string) => {
   const name = platform.trim().toLowerCase();
   if (name === '') {
-    return PLATFORM_BRAND_FALLBACK_CLASS;
+    return undefined;
   }
 
-  const matched = PLATFORM_BRAND_RULES.find((rule) =>
+  return PLATFORM_BRAND_RULES.find((rule) =>
     rule.aliases.some((alias) => name === alias || name.startsWith(`${alias} `))
   );
-
-  return matched?.colorClass ?? PLATFORM_BRAND_FALLBACK_CLASS;
 };
+
+/** 平台名 → 品牌色类（侧栏色点 / 未知平台头像底色）；不认识的平台回退中性色 */
+export const platformBrandColorClass = (platform: string): string =>
+  matchPlatformBrandRule(platform)?.colorClass ?? PLATFORM_BRAND_FALLBACK_CLASS;
+
+/** 平台名 → 品牌 key（账号卡片头像据此显示品牌 Logo）；非品牌平台返回 null */
+export const platformBrandKey = (platform: string): PlatformBrandKey | null =>
+  matchPlatformBrandRule(platform)?.brandKey ?? null;

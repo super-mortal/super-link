@@ -7,6 +7,7 @@ import { formatCardDate } from '@/components/Table/Fields/moduleItem.ts';
 import type { ModuleLayoutProps } from '@/components/Table/Layouts/layoutTypes.ts';
 import { CredentialRow } from '@/components/Account/CredentialRow.tsx';
 import { EncryptedNotesHint, PlatformBadge, TotpBadge } from '@/components/Account/AccountBadges.tsx';
+import { AccountAvatar } from '@/components/Account/AccountAvatar.tsx';
 import { useAccountSecretActions } from '@/hooks/useAccountSecretActions.ts';
 import type { AccountType } from '@/lib/types.ts';
 
@@ -66,8 +67,10 @@ export const AccountCards = ({ rows, visibleFields }: ModuleLayoutProps) => {
             {/* 标题行不换行：标题可省略并透出 title，平台徽章 margin-left:auto 固定在右上角（PRD §9.4）；
                 O-8：与书签/Skill 卡片一致，右移 12px（pl-3）避让左上多选框留约 4px 净空、下移 2px（pt-0.5）视觉找齐。
                  O-13：标题 + 平台区固定 3rem 槽位（min-h-12）；标题 flex: 0 1 auto 可压缩省略，
-                平台徽章 flex-none 不参与压缩，不会被长标题挤出行外 */}
+                平台徽章 flex-none 不参与压缩，不会被长标题挤出行外。
+                头像（refinements.md §3）跟随平台字段可见性，与平台徽章同进同退 */}
             <div className="flex min-h-12 flex-nowrap items-center gap-1.5 pt-0.5 pr-20 pl-3">
+              {showPlatform && <AccountAvatar platform={account.platform} />}
               <h4 className="min-w-0 flex-[0_1_auto] truncate font-semibold tracking-tight" title={account.name}>
                 {account.name}
               </h4>

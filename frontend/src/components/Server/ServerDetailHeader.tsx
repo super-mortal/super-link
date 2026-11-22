@@ -19,35 +19,24 @@ type ServerDetailHeaderProps = {
   onDelete: () => void;
 };
 
-/** 系统信息行：发行版 · CPU 核数 · IP（在线时附开机时长），原型 acc-detail-id 第一行 */
-const ServerSystemLine = ({
-  server,
-  snapshot,
-}: {
-  server: ServerWithStatusType;
-  snapshot: ServerMetricsPointType | null;
-}) => (
+/**
+ * 系统信息行：发行版 · CPU 核数 · IP，原型 acc-detail-id 第一行。
+ * 开机时长不放这一行（refinements §3）：长 IP / 长主机名换行时会把时长挤到独立一行，
+ * 与下方负载 / 最后回传错位；统一收进第二行由 flex-wrap 按序换行。
+ */
+const ServerSystemLine = ({ server }: { server: ServerWithStatusType }) => (
   <p className="text-muted-foreground mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px]">
     <span className="break-all">{server.os_name}</span>
     <span aria-hidden="true">·</span>
     <span>{server.cpu_cores ? `${server.cpu_cores} 核` : '—'}</span>
     <span aria-hidden="true">·</span>
     <span className="font-mono break-all">{server.ip_address}</span>
-    {snapshot ? (
-      <>
-        <span aria-hidden="true">·</span>
-        <span className="inline-flex items-center gap-1 whitespace-nowrap">
-          <Clock className="size-3.5" aria-hidden="true" />
-          运行 {formatServerUptime(snapshot.uptime)}
-        </span>
-      </>
-    ) : null}
   </p>
 );
 
 /**
  * 详情页头部（PRD §5.5，原型 detail-headcard / acc-detail-head）：
- * 头像 + 名称 + 分组徽章 + 四态状态徽章；两行元信息（系统信息 / 负载与最后回传）；
+ * 头像 + 名称 + 分组徽章 + 四态状态徽章；两行元信息（系统信息 / 运行时长 · 负载 · 最后回传）；
  * 右侧操作区（编辑 / 暂停恢复 / 重置 Token / 删除）。
  * <640px 操作按钮只留图标（原型 .detail-actions .acc-btn-label 的隐藏断点）。
  */
@@ -77,11 +66,19 @@ export const ServerDetailHeader = ({
             <ServerStatusBadge status={server.status} size="lg" />
           </div>
 
-          <ServerSystemLine server={server} snapshot={snapshot} />
+          <ServerSystemLine server={server} />
 
+          {/* 第二行元信息：运行时长 · 负载 · 最后回传（refinements §3 同排对齐）。
+              运行时长用 whitespace-nowrap 保持图标与文字不被拆开；整行 flex-wrap 保证
+              窄屏按上述顺序换行、各项不互相挤压（长 IP 已在上一行独立成块）。 */}
           <p className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px]">
             {online && snapshot ? (
               <>
+                <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                  <Clock className="size-3.5" aria-hidden="true" />
+                  运行 {formatServerUptime(snapshot.uptime)}
+                </span>
+                <span aria-hidden="true">·</span>
                 <span className="tabular-nums">
                   负载 {snapshot.load1.toFixed(2)} / {snapshot.load5.toFixed(2)} / {snapshot.load15.toFixed(2)}
                 </span>

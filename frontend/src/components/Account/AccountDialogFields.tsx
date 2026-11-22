@@ -4,6 +4,14 @@ import { Button } from '@/components/ui/button.tsx';
 import { Input } from '@/components/ui/input.tsx';
 import { Textarea } from '@/components/ui/textarea.tsx';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select.tsx';
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxList,
+} from '@/components/ui/combobox.tsx';
 import { AccountFormField } from '@/components/Account/AccountFormField.tsx';
 import { AuthorizationList } from '@/components/Account/AuthorizationList.tsx';
 import { generatePassword } from '@/lib/vaultCrypto.ts';
@@ -52,6 +60,53 @@ export const BASE32_PATTERN = /^[A-Z2-7]+$/i;
 export type FieldKeyType = keyof AccountFormValuesType;
 export type ChangeHandlerType = (key: FieldKeyType, value: string) => void;
 
+/**
+ * 平台字段：自由输入 + 已有平台候选（refinements.md §3）。
+ *
+ * Combobox 只承担「补全建议」：inputValue 直接与表单同步，提交值始终是输入框里的
+ * 平台名（任意文本都能保存），点选候选只是把它替换成该平台名。
+ * 不用原生 <datalist>：它的下拉面板无法跟随主题、尺寸与 ui/select 同口径，故复用
+ * 已有的 ui/combobox 原语（@base-ui/react，不新增依赖）。
+ */
+const PlatformCombobox = ({
+  id,
+  value,
+  options,
+  onChange,
+  disabled,
+  invalid,
+}: {
+  id: string;
+  value: string;
+  options: string[];
+  onChange: (value: string) => void;
+  disabled: boolean;
+  invalid: boolean;
+}) => (
+  <Combobox modal items={options} inputValue={value} onInputValueChange={(next) => onChange(next)} autoHighlight>
+    <ComboboxInput
+      id={id}
+      className="w-full"
+      placeholder="如 GitHub、Google"
+      autoComplete="off"
+      disabled={disabled}
+      showClear={false}
+      aria-invalid={invalid ? true : undefined}
+    />
+    {/* 面板宽度对齐输入框（与 SelectContent 同宽），offset 取 4px 贴近 Select 的 popper 间距 */}
+    <ComboboxContent sideOffset={4} className="w-(--anchor-width) min-w-(--anchor-width)">
+      <ComboboxList>
+        {(item: string) => (
+          <ComboboxItem key={item} value={item}>
+            {item}
+          </ComboboxItem>
+        )}
+      </ComboboxList>
+      <ComboboxEmpty>可直接输入平台名称</ComboboxEmpty>
+    </ComboboxContent>
+  </Combobox>
+);
+
 /** 第一段：基础信息（PRD §10.2） */
 export const BasicInfoFields = ({
   values,
@@ -89,24 +144,14 @@ export const BasicInfoFields = ({
       error={errors.platform}
       hint={platformOptions.length > 0 ? '可输入新平台，也可从建议值选择' : undefined}
     >
-      <Input
+      <PlatformCombobox
         id="account-platform"
-        list="account-platform-options"
         value={values.platform}
-        onChange={(event) => onChange('platform', event.target.value)}
-        placeholder="如 GitHub、Google"
-        autoComplete="off"
+        options={platformOptions}
+        onChange={(value) => onChange('platform', value)}
         disabled={disabled}
-        aria-invalid={errors.platform ? true : undefined}
+        invalid={Boolean(errors.platform)}
       />
-      {/* 用原生 datalist 而不是 @base-ui/react 的 combobox：平台字段绝大多数情况是直接输入，
-          建议值只是补全提示；combobox 需要管理 items / anchor / 键盘高亮一整套状态
-          （见 EditItem/TagSelect 的多选标签场景），对单输入框过重 */}
-      <datalist id="account-platform-options">
-        {platformOptions.map((item) => (
-          <option key={item} value={item} />
-        ))}
-      </datalist>
     </AccountFormField>
 
     <AccountFormField label="账号标识" htmlFor="account-identifier" required error={errors.identifier}>

@@ -149,7 +149,7 @@ export const AppSidebar = observer(({ ...props }: AppSidebarProps) => {
         ) : isServersRoute ? (
           <NavServerGroups />
         ) : (
-          <NavTags itemIDsByTagID={itemIDsByTagID} itemCount={moduleItems.length} />
+          <NavTags itemIDsByTagID={itemIDsByTagID} />
         )}
       </SidebarContent>
       {store.user && (

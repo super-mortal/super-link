@@ -87,6 +87,10 @@ const TagItem = ({
             ? 'group-has-data-[sidebar=menu-action]/menu-item:pr-12 pointer-coarse:group-has-data-[sidebar=menu-action]/menu-item:pr-17'
             : 'group-has-data-[sidebar=menu-action]/menu-item:pr-8 pointer-coarse:group-has-data-[sidebar=menu-action]/menu-item:pr-8',
           className,
+          // 选中态：浅色底 + 主色文字，无左侧色条（refinements.md §2.2，与 SidebarFilterRow 一致）；
+          // 用 data-[active=true] 变体覆盖侧栏原语的实心选中，避免依赖类名顺序
+          isTagSelected &&
+            'data-[active=true]:bg-primary/10 data-[active=true]:text-primary data-[active=true]:hover:bg-primary/15 data-[active=true]:hover:text-primary',
           isEditOpen ? 'bg-primary/5 pointer-events-none' : ''
         )}
       >
@@ -138,11 +142,11 @@ const TagItem = ({
       />
 
       {prefStore.displaySidebarTagItemCounts && (
-        // 选中行计数用主色前景（原型 .side-tag-row:has(.active) .side-tag-count）。
+        // 选中行是浅色底，计数用主色（原型 .side-tag-row:has(.active) .side-tag-count）。
         // 注意用元素自身的 important，不要用 peer-data-[active=true]/menu-button: 变体——
         // 该变体会命中行内所有兄弟节点（包括三点按钮），与按钮的 hover 前景互相干扰
         <SidebarMenuBadge
-          className={cn('text-[11px]! opacity-80 pointer-coarse:right-6', isTagSelected && 'text-primary-foreground!')}
+          className={cn('text-[11px]! opacity-80 pointer-coarse:right-6', isTagSelected && 'text-primary!')}
         >
           {itemCount}
         </SidebarMenuBadge>
@@ -196,11 +200,11 @@ const TagActions = ({ tag, isEditOpen, setIsEditOpen, hasChildTags, isActive }) 
               'top-1! right-1! cursor-pointer rounded-full!',
               'size-6! scale-90 pointer-coarse:scale-100 [&>svg]:size-4.5!',
               'peer-hover/menu-button:scale-100 hover:scale-100 data-[state=open]:scale-100',
-              // 选中行是深色底：图标换主色前景。按钮自身 hover / 菜单展开时会切到浅色圆底，
+              // 选中行是浅色底：图标换主色。按钮自身 hover / 菜单展开时会切到浅色圆底，
               // 前景必须用同等 important 的 hover 变体覆盖回 sidebar-accent-foreground——
-              // important 的基础色会压过非 important 的 hover 变体，否则图标与浅底同色不可见
+              // important 的基础色会压过非 important 的 hover 变体，否则主色图标与强调底不同调
               isActive &&
-                'text-primary-foreground! hover:text-sidebar-accent-foreground! data-[state=open]:text-sidebar-accent-foreground!'
+                'text-primary! hover:text-sidebar-accent-foreground! data-[state=open]:text-sidebar-accent-foreground!'
             )}
           >
             <IconDotsVertical />

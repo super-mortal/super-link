@@ -6,13 +6,8 @@ import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
-  SidebarMenuBadge,
-  SidebarMenuButton,
   SidebarMenuItem,
   useSidebar,
 } from '@/components/ui/sidebar';
@@ -25,11 +20,13 @@ import { Logo } from '@/components/Logo.tsx';
 import { ThemeToggler } from '@/components/Sidebar/ThemeToggler.tsx';
 import { NavTags } from '@/components/Sidebar/NavTags.tsx';
 import { NavPlatforms } from '@/components/Sidebar/NavPlatforms.tsx';
-import { SERVER_GROUPS } from '@/lib/serverFormat.ts';
+import { SidebarSection } from '@/components/Sidebar/SidebarSection.tsx';
+import { SidebarFilterRow } from '@/components/Sidebar/SidebarFilterRow.tsx';
+import { SERVER_GROUP_DOT, SERVER_GROUPS } from '@/lib/serverFormat.ts';
 import { ItemType, ServerGroupType, SkillType } from '@/lib/types.ts';
 
 /**
- * 侧栏「服务器分组」分区（PRD §5.5 / 决策 D10）。
+ * 侧栏「服务器分组」分区（PRD §5.5 / 决策 D10 / refinements.md §2.1~§2.3）。
  *
  * 分组固定四项（SERVER_GROUPS，与后端 ServerPayload::GROUPS 一致），每项带计数；
  * 点击筛选、再点取消，不设「全部」行——无选中即全部。
@@ -38,6 +35,9 @@ import { ItemType, ServerGroupType, SkillType } from '@/lib/types.ts';
  * 且四项恒定返回（为 0 也展示，与账号库平台分区行为对齐）。
  * 选中态存 store.serverListParams.group（而非组件 state）：task11 列表页直接消费同一份
  * 参数，点击即按新条件重新拉取，侧栏与列表始终同源。
+ *
+ * 外壳与行规格复用 SidebarSection / SidebarFilterRow（§2.1 / §2.2）；本分区没有搜索动作，
+ * 由 SidebarSection 渲染不可见占位，保证头部 2rem 与其他模块不跳动。
  */
 const NavServerGroups = observer(() => {
   const store = React.useContext(StoreContext);
@@ -56,29 +56,20 @@ const NavServerGroups = observer(() => {
   };
 
   return (
-    <SidebarGroup className="border-sidebar-border mt-1 gap-2 border-t">
-      <div className="me-1 flex items-center justify-end gap-2">
-        <SidebarGroupLabel className="me-auto">分组</SidebarGroupLabel>
-      </div>
-
-      <SidebarGroupContent className="flex flex-col gap-2">
-        <SidebarMenu>
-          {SERVER_GROUPS.map((group) => (
-            <SidebarMenuItem key={group}>
-              <SidebarMenuButton
-                onClick={() => selectGroup(group)}
-                isActive={activeGroup === group}
-                className="ps-8"
-                title={group}
-              >
-                <span className="line-clamp-1 break-all">{group}</span>
-              </SidebarMenuButton>
-              <SidebarMenuBadge>{store.serverGroups[group] ?? 0}</SidebarMenuBadge>
-            </SidebarMenuItem>
-          ))}
-        </SidebarMenu>
-      </SidebarGroupContent>
-    </SidebarGroup>
+    <SidebarSection label="分组">
+      <SidebarMenu>
+        {SERVER_GROUPS.map((group) => (
+          <SidebarFilterRow
+            key={group}
+            label={group}
+            count={store.serverGroups[group] ?? 0}
+            dotClass={SERVER_GROUP_DOT[group]}
+            isActive={activeGroup === group}
+            onClick={() => selectGroup(group)}
+          />
+        ))}
+      </SidebarMenu>
+    </SidebarSection>
   );
 });
 

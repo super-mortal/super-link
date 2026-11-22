@@ -24,6 +24,19 @@ export const SERVER_GROUPS: ServerGroupType[] = ['家庭', '公网', '公司', '
 export const SERVER_DEFAULT_GROUP: ServerGroupType = '家庭';
 
 /**
+ * 分组固定色点（refinements.md §2.2）：家庭 绿、公网 蓝、公司 琥珀、归档 灰。
+ *
+ * 分组固定色是纯视觉识别，不参与筛选逻辑；全项目只维护这一份映射（NavServerGroups 消费），
+ * 禁止在组件里再写 map。与 SERVER_STATUS 同口径用 Tailwind 调色板类并带暗色变体，不写十六进制。
+ */
+export const SERVER_GROUP_DOT: Record<ServerGroupType, string> = {
+  家庭: 'bg-green-500',
+  公网: 'bg-blue-500',
+  公司: 'bg-amber-500',
+  归档: 'bg-neutral-400 dark:bg-neutral-500',
+};
+
+/**
  * 连接状态四态展示（PRD §5.1 卡片状态点 / 详情页徽章）。
  * dot 为状态点颜色类、text 为文字色类：只用 Tailwind 语义调色板类并带 dark: 变体，
  * 不写死十六进制颜色（暗色主题必须可用，与 AccountBadges 等同款写法）。

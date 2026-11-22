@@ -21,8 +21,10 @@ import { isAccountItem, isSkillItem } from '@/components/Table/Fields/moduleItem
 import { ACCOUNT_DELETE_HINT } from '@/components/Account/accountMessages.ts';
 import { AccountDialogContext } from '@/components/Account/AccountDialog.tsx';
 
+// 显隐 / 加深 / 阴影集中在 index.css 的 `.onhover-actions` 语义类（默认 45% 可见），
+// 这里只保留几何与基础色，避免各处散装写 opacity 组合；多选框仍走 `.onhover-visible`
 const actionButtonClass =
-  'onhover-visible text-muted-foreground bg-background hover:bg-accent hover:text-foreground flex h-8 shrink-0 items-center justify-center rounded-md border px-2 shadow-xs transition-colors';
+  'onhover-actions text-muted-foreground bg-background hover:bg-accent hover:text-foreground flex h-8 shrink-0 items-center justify-center rounded-md border px-2';
 
 /** 卡片 / 列表 / 表格共用的「打开」逻辑：有详情页走路由，否则开编辑弹窗 */
 export const useModuleItemOpen = (module: ModuleKey) => {

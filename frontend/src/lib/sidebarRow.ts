@@ -27,14 +27,26 @@ export const SIDEBAR_ROW_CLASS =
 export const SIDEBAR_ROW_LIST_GAP_CLASS = 'gap-1';
 
 /** §2.2 左侧槽位：1.5rem（标签 chevron 槽；平台 / 分组留空但保留占位） */
-export const SIDEBAR_ROW_SLOT_CLASS = 'flex w-6 flex-none items-center justify-center';
+export const SIDEBAR_ROW_SLOT_CLASS = 'flex h-6 w-6 flex-none items-center justify-center';
 
 /** §2.2 颜色点：0.625rem 圆点，与名称间距 0.5rem（行内 gap-2） */
 export const SIDEBAR_ROW_DOT_CLASS = 'size-2.5 flex-none rounded-full';
 
+/** 标签子级色点缩到 0.5rem，与父级 500 字重一起表达层级（PRD O-10） */
+export const SIDEBAR_ROW_DOT_NESTED_CLASS = 'size-2';
+
+/** §2.2 叶子行左内边距：与 chevron 槽同宽（1.5rem），父级 / 叶子名称因此左对齐 */
+export const SIDEBAR_ROW_LEAF_INDENT_CLASS = 'ps-6';
+
+/** §2.2 第三级起叶子行：外层列表已缩进，内边距收到 0.75rem，避免深层标签逐级变窄 */
+export const SIDEBAR_ROW_DEEP_LEAF_INDENT_CLASS = 'ps-3';
+
 /** §2.2 右侧计数：距右 0.25rem、11px、透明度 0.8、等宽数字 */
 export const SIDEBAR_ROW_COUNT_CLASS =
   'pointer-events-none absolute top-1/2 right-1 -translate-y-1/2 text-[11px] font-medium tabular-nums opacity-80';
+
+/** §2.2 触屏没有 hover：三点常显会与计数重叠，粗指针设备上计数左移 1.5rem 让位 */
+export const SIDEBAR_ROW_COUNT_TOUCH_OFFSET_CLASS = 'pointer-coarse:right-6';
 
 /** §2.2 三点容器：右偏移 -0.25rem，使按钮中心与计数中心对齐（不再偏左） */
 export const SIDEBAR_ROW_ACTION_OFFSET_CLASS = '-right-1';

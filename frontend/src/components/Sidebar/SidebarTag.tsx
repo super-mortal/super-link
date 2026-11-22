@@ -1,11 +1,5 @@
 import * as React from 'react';
-import {
-  SidebarMenuAction,
-  SidebarMenuBadge,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  useSidebar,
-} from '@/components/ui/sidebar.tsx';
+import { SidebarMenuAction, SidebarMenuButton, SidebarMenuItem, useSidebar } from '@/components/ui/sidebar.tsx';
 import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible.tsx';
 import { IconChevronRight, IconDotsVertical, IconPinned } from '@tabler/icons-react';
 import {
@@ -23,6 +17,17 @@ import {
 import { PreferencesStoreContext, StoreContext } from '@/store/storeContext.ts';
 import { cn, colorMap, getColorClass } from '@/lib/utils.ts';
 import { useItemListState } from '@/hooks/useItemListState.ts';
+import {
+  SIDEBAR_ROW_ACTION_CLASS,
+  SIDEBAR_ROW_ACTION_OFFSET_CLASS,
+  SIDEBAR_ROW_COUNT_CLASS,
+  SIDEBAR_ROW_COUNT_TOUCH_OFFSET_CLASS,
+  SIDEBAR_ROW_DEEP_LEAF_INDENT_CLASS,
+  SIDEBAR_ROW_DOT_CLASS,
+  SIDEBAR_ROW_DOT_NESTED_CLASS,
+  SIDEBAR_ROW_LEAF_INDENT_CLASS,
+  SIDEBAR_ROW_SLOT_CLASS,
+} from '@/lib/sidebarRow.ts';
 import { TagType } from '@/lib/types.ts';
 import { DeleteTagDialog } from '@/components/Sidebar/DeleteTagDialog.tsx';
 import { Popover, PopoverAnchor, PopoverContent, PopoverHeader } from '@/components/ui/popover.tsx';
@@ -80,9 +85,9 @@ const TagItem = ({
         onClick={selectTag}
         isActive={isTagSelected}
         className={cn(
-          // O-10 缩进规则：一级（含二级）叶子固定左内边距 24px，第三级起收到 12px，
-          // 配合外层列表收窄的边距，避免深层标签逐级变窄；父级由 chevron 提供缩进故不加左内边距
-          prependedNode ? 'ps-0' : depth >= 2 ? 'ps-3' : 'ps-6',
+          // §2.2 名称对齐：父级用 1.5rem chevron 槽（见 prependedNode），叶子用同宽左内边距，
+          // 两者名称因此左对齐；第三级起外层列表已缩进，内边距收到 0.75rem，避免深层标签逐级变窄
+          prependedNode ? 'ps-0' : depth >= 2 ? SIDEBAR_ROW_DEEP_LEAF_INDENT_CLASS : SIDEBAR_ROW_LEAF_INDENT_CLASS,
           prefStore.displaySidebarTagItemCounts
             ? 'group-has-data-[sidebar=menu-action]/menu-item:pr-12 pointer-coarse:group-has-data-[sidebar=menu-action]/menu-item:pr-17'
             : 'group-has-data-[sidebar=menu-action]/menu-item:pr-8 pointer-coarse:group-has-data-[sidebar=menu-action]/menu-item:pr-8',
@@ -97,9 +102,9 @@ const TagItem = ({
         {prependedNode}
 
         <div className={cn('flex w-full items-center gap-2')}>
-          {/* 子级色点从 10px 缩到 8px，与父级 500 字重一起表达层级（PRD O-10） */}
+          {/* 子级色点缩小，与父级 500 字重一起表达层级（PRD O-10）；尺寸取自共享行常量 */}
           <span
-            className={cn('flex-none rounded-full', depth === 0 ? 'size-2.5' : 'size-2', getColorClass(tag.color))}
+            className={cn(SIDEBAR_ROW_DOT_CLASS, depth !== 0 && SIDEBAR_ROW_DOT_NESTED_CLASS, getColorClass(tag.color))}
           ></span>
 
           <span title={tag.title} className={cn('line-clamp-1 break-all', prependedNode && 'font-medium')}>
@@ -142,14 +147,20 @@ const TagItem = ({
       />
 
       {prefStore.displaySidebarTagItemCounts && (
-        // 选中行是浅色底，计数用主色（原型 .side-tag-row:has(.active) .side-tag-count）。
-        // 注意用元素自身的 important，不要用 peer-data-[active=true]/menu-button: 变体——
-        // 该变体会命中行内所有兄弟节点（包括三点按钮），与按钮的 hover 前景互相干扰
-        <SidebarMenuBadge
-          className={cn('text-[11px]! opacity-80 pointer-coarse:right-6', isTagSelected && 'text-primary!')}
+        // 计数与 SidebarFilterRow 同一套几何（refinements.md §2.2）：距右 0.25rem / 11px / 透明度 0.8。
+        // 不用 SidebarMenuBadge：原语自带 px-1，计数实际会离右 0.5rem，与共享行不一致。
+        // 桌面端 hover 行或三点、菜单展开时隐藏计数给三点让位；触屏没有 hover，计数左移避让常显的三点
+        <span
+          className={cn(
+            SIDEBAR_ROW_COUNT_CLASS,
+            'pointer-fine:peer-hover/menu-action:hidden pointer-fine:peer-hover/menu-button:hidden',
+            'pointer-fine:peer-data-[state=open]/menu-action:hidden',
+            SIDEBAR_ROW_COUNT_TOUCH_OFFSET_CLASS,
+            isTagSelected && 'text-primary'
+          )}
         >
           {itemCount}
-        </SidebarMenuBadge>
+        </span>
       )}
     </SidebarMenuItem>
   );
@@ -193,13 +204,16 @@ const TagActions = ({ tag, isEditOpen, setIsEditOpen, hasChildTags, isActive }) 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           {/* O-10：24px 圆形热区，hover 当前行才淡入 + 轻微缩放；操作菜单经 DropdownMenuPortal
-              挂到 body，按钮自身的 transform 不会破坏菜单定位（原型里 .dd 容器加 transform 踩过的坑） */}
+              挂到 body，按钮自身的 transform 不会破坏菜单定位（原型里 .dd 容器加 transform 踩过的坑）。
+              §2.2：右偏移 -0.25rem 让按钮中心与计数中心对齐，前景用 --foreground（比侧栏前景更深） */}
           <SidebarMenuAction
             showOnHover={true}
             className={cn(
-              'top-1! right-1! cursor-pointer rounded-full!',
-              'size-6! scale-90 pointer-coarse:scale-100 [&>svg]:size-4.5!',
+              'top-1! scale-90 cursor-pointer pointer-coarse:scale-100',
               'peer-hover/menu-button:scale-100 hover:scale-100 data-[state=open]:scale-100',
+              SIDEBAR_ROW_ACTION_CLASS,
+              SIDEBAR_ROW_ACTION_OFFSET_CLASS,
+              'text-foreground!',
               // 选中行是浅色底：图标换主色。按钮自身 hover / 菜单展开时会切到浅色圆底，
               // 前景必须用同等 important 的 hover 变体覆盖回 sidebar-accent-foreground——
               // important 的基础色会压过非 important 的 hover 变体，否则主色图标与强调底不同调
@@ -221,6 +235,8 @@ const TagActions = ({ tag, isEditOpen, setIsEditOpen, hasChildTags, isActive }) 
           </DropdownMenuItem>
           <DropdownMenuSub>
             <DropdownMenuSubTrigger> 颜色</DropdownMenuSubTrigger>
+            {/* 色板经 Portal 挂到 body：父菜单内容带 overflow-y-auto 与 max-h，不 Portal 会被裁掉；
+                Radix Sub 打开时父级标签菜单保持打开，不会一闪即关（refinements.md §2.2） */}
             <DropdownMenuPortal>
               <DropdownMenuSubContent>
                 {Object.keys(colorMap).map((color) => (
@@ -388,15 +404,16 @@ export function SidebarTag({
         className={cn(isChildTagSelected && !isCollapsibleOpen ? 'bg-primary/10' : '', 'gap-0')}
         prependedNode={
           <div
-            // chevron 热区扩大到 28px 并加 hover 背景（PRD O-10）；点击只切换展开，不触发行选中
-            className="hover:bg-sidebar-accent cursor-pointer rounded-sm p-1.5"
+            // §2.2：chevron 槽固定 1.5rem（与叶子行左内边距同宽，名称因此左对齐）；
+            // 整槽可点、hover 有底色，点击只切换展开，不触发行选中
+            className={cn(SIDEBAR_ROW_SLOT_CLASS, 'hover:bg-sidebar-accent cursor-pointer rounded-sm')}
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
               setIsCollapsibleOpen(!isCollapsibleOpen);
             }}
           >
-            <IconChevronRight className={cn('h-4 w-4 transition-transform', isCollapsibleOpen ? `rotate-90` : '')} />
+            <IconChevronRight className={cn('size-4 transition-transform', isCollapsibleOpen ? `rotate-90` : '')} />
           </div>
         }
         childTags={

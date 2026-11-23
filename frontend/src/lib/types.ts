@@ -533,3 +533,50 @@ export type ServerTokenResponseType = {
 export type ServerCreateResultType = ServerTokenResponseType & {
   server: ServerWithStatusType;
 };
+
+/* ---------------------------------------------------------------------------
+ * 备份 / 恢复（dev-spec §6，refinements.md §4）
+ * GET /api/backup/<module> 的响应体本身就是备份文件内容；POST
+ * /api/backup/<module>/restore 走 success 包裹，data 即 BackupRestoreResultType。
+ * 逐条结果只含名称与状态，后端不回显任何凭据字段（服务器备份的哈希 / 盐只进文件）。
+ * ------------------------------------------------------------------------- */
+
+/** 备份模块：同时决定端点路径与文件名 super-link-<module>-YYYYMMDD.json */
+export type BackupModuleType = 'bookmarks' | 'skills' | 'servers';
+
+/** 恢复模式：merge 合并（默认）/ overwrite 覆盖（服务器覆盖模式会清理备份外条目） */
+export type BackupRestoreModeType = 'merge' | 'overwrite';
+
+/** 逐条恢复状态（dev-spec §6.5，与各 BackupRestorer 输出一致） */
+export type BackupRestoreItemType = {
+  name: string;
+  status: 'new' | 'updated' | 'same' | 'skipped' | 'failed';
+  /** 失败原因 / 跳过说明，可选 */
+  message?: string;
+};
+
+/**
+ * 恢复分类汇总：键随模块略有差异——updated 只有 Skill / 服务器才有，
+ * 书签侧不返回该键；前端按可选读取，不要假定一定存在。
+ */
+export type BackupRestoreSummaryType = {
+  new: number;
+  updated?: number;
+  same: number;
+  skipped: number;
+  failed: number;
+};
+
+/** 恢复结果（预检 dry_run=true / 执行 dry_run=false 共用同形） */
+export type BackupRestoreResultType = {
+  dry_run: boolean;
+  mode: BackupRestoreModeType;
+  summary: BackupRestoreSummaryType;
+  items: BackupRestoreItemType[];
+  /** 语义说明：Skill / 服务器的恢复边界提示（如上传来源跳过、覆盖删服务器） */
+  note?: string;
+  /** 仅服务器：覆盖模式下将删除 / 已删除的备份外服务器数 */
+  removed?: number;
+  /** 仅书签：标签维度的新建 / 复用数 */
+  tags?: { new: number; same: number };
+};

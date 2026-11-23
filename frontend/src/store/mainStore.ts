@@ -9,6 +9,9 @@ import {
   AuthorizationInputType,
   AccountAuthorizationType,
   AccountInputType,
+  BackupModuleType,
+  BackupRestoreModeType,
+  BackupRestoreResultType,
   CreateUserType,
   GithubAccessModeType,
   ItemType,
@@ -1252,6 +1255,89 @@ class MainStore {
       this.fetchTags();
       return true;
     });
+  };
+
+  /* ----------------------------- 备份 / 恢复（refinements §4） ----------------------------- */
+
+  /**
+   * 导出模块备份（GET /api/backup/<module>）。
+   *
+   * 响应体本身就是备份文件内容（后端 data() 裸对象 + no-store），拉到后直接序列化落盘，
+   * 文件名与后端 BackupPayload::fileName 同规则：super-link-<module>-YYYYMMDD.json（本地日期）。
+   * 成功不弹 toast——导出是设置页里的显式操作，成功文案归 UI 层（同 exportVault）。
+   */
+  exportBackup = async (module: BackupModuleType): Promise<boolean> => {
+    const response = await this.runRequest(API_ENDPOINTS.backup.export[module], 'GET', {}, '导出备份失败', true, false);
+
+    if (response === null) {
+      return false;
+    }
+
+    const now = new Date();
+    const pad = (value: number) => String(value).padStart(2, '0');
+    const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`;
+
+    const blob = new Blob([JSON.stringify(response, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `super-link-${module}-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    return true;
+  };
+
+  /**
+   * 预检恢复（POST /api/backup/<module>/restore，dry_run=1）：只读分类，不写库。
+   * 返回后端 data（dry_run / mode / summary / items），由 UI 渲染逐条预览。
+   */
+  previewRestore = async (
+    module: BackupModuleType,
+    file: File,
+    mode: BackupRestoreModeType
+  ): Promise<BackupRestoreResultType | null> => this.restoreRequest(module, file, mode, true);
+
+  /**
+   * 执行恢复（POST /api/backup/<module>/restore）。
+   * 成功 / 失败提示统一走后端 message（runRequest：成功弹 success、失败弹 error），
+   * 不在这里吞异常；返回逐条结果与 summary 供 UI 展示。
+   */
+  restoreBackup = async (
+    module: BackupModuleType,
+    file: File,
+    mode: BackupRestoreModeType
+  ): Promise<BackupRestoreResultType | null> => this.restoreRequest(module, file, mode, false);
+
+  /** 预检 / 执行共用的 multipart 上传（字段名与后端一致：file / mode / dry_run） */
+  restoreRequest = async (
+    module: BackupModuleType,
+    file: File,
+    mode: BackupRestoreModeType,
+    dryRun: boolean
+  ): Promise<BackupRestoreResultType | null> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('mode', mode);
+    // 只在预检时传：后端 filter_var 认 '1' / 'true'，缺省按 false（执行）处理
+    if (dryRun) {
+      formData.append('dry_run', '1');
+    }
+
+    const response = await this.runRequest(
+      API_ENDPOINTS.backup.restore[module],
+      'POST',
+      formData,
+      dryRun ? '预检备份失败' : '恢复备份失败'
+    );
+
+    if (response === null) {
+      return null;
+    }
+
+    return (response?.data ?? null) as BackupRestoreResultType | null;
   };
 
   /**

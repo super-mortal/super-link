@@ -1,4 +1,4 @@
-import type { ServerRangeType } from '@/lib/types.ts';
+import type { BackupModuleType, ServerRangeType } from '@/lib/types.ts';
 
 const API_BASE = '/api';
 
@@ -92,6 +92,21 @@ export const API_ENDPOINTS = {
   importBookmarks: {
     pocket: `${API_BASE}/import/pocket`,
     browser: `${API_BASE}/import/bookmarks`,
+  },
+  /** 备份（refinements.md §4）：GET 下发备份文件内容，POST 走 multipart 恢复（默认登录态 + CSRF） */
+  backup: {
+    /** GET /api/backup/<module>：响应体即 super-link-<module>-YYYYMMDD.json 内容（no-store） */
+    export: {
+      bookmarks: `${API_BASE}/backup/bookmarks`,
+      skills: `${API_BASE}/backup/skills`,
+      servers: `${API_BASE}/backup/servers`,
+    } satisfies Record<BackupModuleType, string>,
+    /** POST /api/backup/<module>/restore：multipart 字段 file + mode + dry_run */
+    restore: {
+      bookmarks: `${API_BASE}/backup/bookmarks/restore`,
+      skills: `${API_BASE}/backup/skills/restore`,
+      servers: `${API_BASE}/backup/servers/restore`,
+    } satisfies Record<BackupModuleType, string>,
   },
   exportData: `${API_BASE}/export/data`,
   importData: `${API_BASE}/import/data`,

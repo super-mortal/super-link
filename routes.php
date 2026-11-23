@@ -17,6 +17,7 @@ use Controllers\AuthLogoutController;
 use Controllers\BackupBookmarksGetController;
 use Controllers\BackupBookmarksRestoreController;
 use Controllers\BackupServersGetController;
+use Controllers\BackupServersRestoreController;
 use Controllers\BackupSkillsGetController;
 use Controllers\BackupSkillsRestoreController;
 use Controllers\ExportDataController;
@@ -264,7 +265,6 @@ return [
 		// 备份（refinements.md §4）：新格式按模块拆分，响应体即备份文件内容
 		// （data() 裸对象 + no-store），不走 success 包裹；恢复端点为 POST
 		// /api/backup/<module>/restore（multipart 上传，默认登录态 + CSRF 校验）。
-		// 服务器恢复端点的注册由 task18 补齐。
 		// 旧 GET /api/export/data 保留并复用同一份字段映射（见其上方的兼容说明）
 		'backup' => [
 			'bookmarks' => [
@@ -283,8 +283,13 @@ return [
 					'POST' => BackupSkillsRestoreController::class,
 				],
 			],
+			// 服务器恢复原样写回 Token 哈希 / 盐（Hub 地址不变时 agent 免重装）；
+			// merge 同名跳过，overwrite 同名更新并清理备份外服务器，dry_run 只读预检
 			'servers' => [
 				'GET' => BackupServersGetController::class,
+				'restore' => [
+					'POST' => BackupServersRestoreController::class,
+				],
 			],
 		],
 		'import' => [

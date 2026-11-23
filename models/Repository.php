@@ -1412,10 +1412,19 @@ class Repository
 	 * （见 deleteSkill / deleteAccounts 的同类处理），所以三张明细表与连接
 	 * 注册表必须显式删除，否则会留下孤儿行。四步与删除本身放在同一事务里，
 	 * 避免中途失败留下半删除状态。删除目标不存在时同样返回 true（幂等）。
+	 *
+	 * 事务嵌套：备份覆盖恢复（ServerBackupRestorer）会把「更新 / 新建 + 清理备份外
+	 * 服务器」包在一个外层事务里循环调用本方法，此时不能再开事务（PDO 嵌套
+	 * beginTransaction 直接抛异常）。因此这里只在没有活跃事务时自行开启并提交 /
+	 * 回滚；嵌套场景由外层统一收尾，本方法失败时返回 false，由调用方决定回滚整批。
 	 */
 	public function deleteServer(int $id): bool
 	{
-		$this->pdo->beginTransaction();
+		$owns_transaction = !$this->pdo->inTransaction();
+		if ($owns_transaction) {
+			$this->pdo->beginTransaction();
+		}
+
 		try {
 			// 表名来自硬编码清单而非用户输入；server_id 走参数绑定
 			foreach (['server_connections', 'server_metrics', 'server_disks', 'server_docker'] as $table) {
@@ -1426,10 +1435,14 @@ class Repository
 			$stmt = $this->pdo->prepare('DELETE FROM servers WHERE id = :id');
 			$stmt->execute([':id' => $id]);
 
-			$this->pdo->commit();
+			if ($owns_transaction) {
+				$this->pdo->commit();
+			}
 			return true;
 		} catch (Exception $e) {
-			if ($this->pdo->inTransaction()) {
+			// 嵌套时不能回滚外层事务（会把调用方已写入的条目一并撤掉却仍返回 false），
+			// 只交还 false，由外层按批次决策
+			if ($owns_transaction && $this->pdo->inTransaction()) {
 				$this->pdo->rollBack();
 			}
 			return false;

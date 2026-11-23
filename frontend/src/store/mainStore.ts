@@ -1337,7 +1337,33 @@ class MainStore {
       return null;
     }
 
-    return (response?.data ?? null) as BackupRestoreResultType | null;
+    const data = (response?.data ?? null) as
+      | (BackupRestoreResultType & {
+          new?: number;
+          updated?: number;
+          same?: number;
+          skipped?: number;
+          failed?: number;
+        })
+      | null;
+
+    if (data === null) {
+      return null;
+    }
+
+    // 预检按 refinements.md §4.5 返回扁平分类（{ new, same, skipped, ... }），
+    // 执行返回 { items, summary }。这里统一补成 summary，UI 只认一种形状。
+    if (!data.summary) {
+      data.summary = {
+        new: data.new ?? 0,
+        updated: data.updated,
+        same: data.same ?? 0,
+        skipped: data.skipped ?? 0,
+        failed: data.failed ?? 0,
+      };
+    }
+
+    return data;
   };
 
   /**

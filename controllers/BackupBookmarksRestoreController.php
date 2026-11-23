@@ -6,6 +6,7 @@ use Framework\ControllerInterface;
 use Framework\Exceptions\ValidationException;
 use Framework\Responses\ResponseInterface;
 use Framework\ServiceContainer;
+use Utils\BackupPayload;
 use Utils\BookmarkRestorer;
 use function Framework\success;
 
@@ -15,8 +16,9 @@ use function Framework\success;
  * 书签恢复（refinements.md §4.3 / dev-spec §6.5）：
  * multipart 字段 file（必填）+ mode=merge|overwrite（默认 merge）+ dry_run（1/true 为预检）。
  *
- * 响应走 success($message, $result)，result 为
- * { dry_run, mode, summary: { new, same, skipped, failed }, items, tags }；
+ * 响应走 success($message, $result)：
+ *   - 预检（dry_run）按 refinements.md §4.5 返回扁平 `{ dry_run, mode, new, same, skipped, items, tags }`；
+ *   - 执行返回 `{ dry_run, mode, summary: { new, same, skipped, failed }, items, tags }`。
  * 逐条结果只含 URL 名称与状态，不回显任何敏感字段。
  *
  * 安全：写操作依赖框架默认的登录态与 CSRF 校验，不加入任何跳过名单；
@@ -60,6 +62,6 @@ class BackupBookmarksRestoreController implements ControllerInterface
 			}
 		}
 
-		return success($message, $result);
+		return success($message, $dryRun ? BackupPayload::flattenPreview($result) : $result);
 	}
 }

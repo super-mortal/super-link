@@ -20,13 +20,13 @@ class ExportDataController implements ControllerInterface
 	 *
 	 * 与书签备份共用 Utils\BackupPayload 的字段映射与版本 / 导出时间组装，
 	 * 避免两处各拼一份后漂移；本端点只用 payload()（无 module）且
-	 * mapItems 传 true 保留 id。
+	 * mapItems 传 true 保留 id。标签按模块过滤（refinements.md §4.1 目标 5）：只导 module='bookmarks'，不混入 Skill 标签。
 	 */
 	public function __invoke(array $input): ResponseInterface
 	{
 		$repository = ServiceContainer::get(Repository::class);
 
-		$tags = $repository->getTags();
+		$tags = $repository->getTags('bookmarks');
 		$items = $repository->getItems();
 
 		return success('数据导出成功', BackupPayload::payload([

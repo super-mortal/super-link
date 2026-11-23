@@ -7,6 +7,7 @@ use Framework\Exceptions\ValidationException;
 use Framework\Responses\ResponseInterface;
 use Framework\ServiceContainer;
 use Models\Repository;
+use Utils\BackupPayload;
 use Utils\SkillBackupRestorer;
 use Utils\SkillInstaller;
 use function Framework\success;
@@ -22,8 +23,9 @@ use function Framework\success;
  * 单条不可达 / URL 非法只记该条 failed，不中断其余条目；dry_run 只读本地状态，
  * 不触发 clone / fetch / 写库 / 删文件。
  *
- * 响应走 success($message, $result)，result 为
- * { dry_run, mode, note, summary: { new, updated, same, skipped, failed }, items }；
+ * 响应走 success($message, $result)：
+ *   - 预检（dry_run）按 refinements.md §4.5 返回扁平 `{ dry_run, mode, new, updated, same, skipped, items, note }`；
+ *   - 执行返回 `{ dry_run, mode, note, summary: { new, updated, same, skipped, failed }, items }`。
  * 逐条结果只含名称与状态（失败原因可能带 SkillInstaller 的 [SL-XXX-NNNN] 错误码），
  * 不回显任何敏感字段。
  *
@@ -69,6 +71,6 @@ class BackupSkillsRestoreController implements ControllerInterface
 			}
 		}
 
-		return success($message, $result);
+		return success($message, $dryRun ? BackupPayload::flattenPreview($result) : $result);
 	}
 }

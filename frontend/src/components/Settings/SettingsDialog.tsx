@@ -36,7 +36,7 @@ export const SettingsDialog = observer(() => {
     { id: 'import', title: '导入', icon: Import, component: <SettingsImport />, warningMessage: null },
     {
       id: 'backup',
-      title: '备份',
+      title: '数据备份',
       icon: Database,
       component: <SettingsBackupSection onRestore={setRestoreModule} />,
       warningMessage: null,

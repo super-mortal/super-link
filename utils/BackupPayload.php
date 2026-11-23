@@ -57,6 +57,31 @@ class BackupPayload
 	}
 
 	/**
+	 * 预检响应扁平化：把 summary 里的分类计数提升到顶层
+	 *
+	 * refinements.md §4.5 约定 dry_run 直接返回 `{ new, same, skipped }` 与逐条预览，
+	 * 而执行阶段保留 `{ items, summary }`（同一份结果结构供 UI 复用）。三个恢复器
+	 * 内部统一产出 summary，这里只在预检响应出口做一次形态转换，避免三处各写一遍。
+	 *
+	 * 不修改原数组：返回新数组，summary 被移除，其余键（items / tags / note /
+	 * removed / mode / dry_run）原样保留。
+	 */
+	public static function flattenPreview(array $result): array
+	{
+		if (!isset($result['summary']) || !is_array($result['summary'])) {
+			return $result;
+		}
+
+		$flattened = $result;
+		unset($flattened['summary']);
+		foreach ($result['summary'] as $key => $value) {
+			$flattened[$key] = $value;
+		}
+
+		return $flattened;
+	}
+
+	/**
 	 * 备份文件名：super-link-<module>-YYYYMMDD.json（dev-spec §6.1）
 	 *
 	 * 只用于 Content-Disposition 下载头；同一天多次导出会得到同名文件，

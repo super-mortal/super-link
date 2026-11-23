@@ -78,7 +78,7 @@
 | 搜索态 | 输入框高度 2rem，替换头部，列表起始位置不变 |
 | 列表体 | 行高 2rem，行间距 0.25rem，与模块列表一致 |
 
-分区标题保留语义：书签「标签」、Skill「分类」、账号库「标签」、服务器「分组」。
+分区标题保留语义：书签「标签」、Skill「分类」、账号库「平台」、服务器「分组」。
 
 ### 2.2 行规格
 
@@ -166,7 +166,7 @@
 
 **Skill**：`skills: [{ name, source_url, description, fingerprint, installed_at }]` + `skipped.upload`；仅 `source_type='github'`；判重键 `name`；恢复调用现有 GitHub 安装流程拉最新版本；标签不在备份范围内。
 
-**服务器**：`servers: [{ name, note, group_id, group_name, paused, token_hash, token_salt }]`；不含历史指标；判重键 `name`；恢复保留 Token 哈希与盐，Hub 地址不变时 agent 无需重装。
+**服务器**：`servers: [{ name, note, group, paused, token_hash, token_salt }]`；`group` 为分组名称（库内列名 `group_name`，分组是固定名称文本，没有 `group_id`）；不含历史指标；判重键 `name`；恢复保留 Token 哈希与盐，Hub 地址不变时 agent 无需重装。
 
 **账号库**：沿用 `.slvault` 加密文件。
 
@@ -206,7 +206,7 @@
 | GET | `/api/vault/export` | 账号库加密备份（现有） |
 | POST | `/api/vault/import` | 账号库导入（现有） |
 
-`dry_run=true` 只返回 `{ new, same, skipped }` 与逐条预览，不写库；恢复响应逐条返回 `{ name, status, message? }`。旧 `/api/export/data`、`/api/import/data` 保留一段时间，内部改调新逻辑。
+`dry_run=true` 返回扁平分类 `{ new, same, skipped, updated?, failed? }` 与逐条预览（`items`，另可带 `tags` / `note` / `removed`），不写库；执行响应为 `{ dry_run, mode, items, summary: { new, updated?, same, skipped, failed }, note?, removed?, tags? }`，逐条返回 `{ name, status, message? }`。旧 `/api/export/data`、`/api/import/data` 保留：旧导出已按 `module='bookmarks'` 过滤标签、不再混入 Skill 标签，旧导入对缺 `module` 的文件补默认 `bookmarks`；新端点缺 `module` 一律 400。
 
 ## 5. 实施文件（生产，待实施）
 
@@ -240,7 +240,7 @@
 - [ ] 平台侧栏无字母图标；账号卡片常用平台显示品牌 Logo。
 - [ ] 所有下拉使用统一样式，无系统原生弹层。
 - [ ] Skills 无标签搜索入口。
-- [ ] 服务器备注可添加 / 编辑 / 清空；头部三行元信息对齐。
+- [ ] 服务器备注可添加 / 编辑 / 清空；头部两行元信息对齐（系统信息行 + 运行时长 / 负载 / 最后回传行）。
 - [ ] 卡片右上角操作默认半可见，hover 完全显现。
 - [ ] 页面与弹窗滚动条隐藏，内容仍可滚动。
 - [ ] 模块实心选中与筛选项浅色高亮同时存在时不冲突。
@@ -314,3 +314,4 @@
 ## 12. 变更记录
 
 - 2026-11-22：首版。合并原侧栏两份文档与备份恢复文档；补充界面细节优化、平台 / 分组颜色点、三点对齐、颜色子菜单、不发布新版本的说明。
+- 2026-11-23：随实施收口对齐文档与代码——账号库分区标题改为「平台」；服务器备份字段改为 `group`（说明没有 `group_id`）；预检响应写明扁平字段与执行响应的 `summary` 结构；旧导出补充「已按 `module='bookmarks'` 过滤标签」；验收条「三行元信息」更正为两行；设置页分区名统一为「数据备份」。

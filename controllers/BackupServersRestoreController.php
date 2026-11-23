@@ -7,6 +7,7 @@ use Framework\Exceptions\ValidationException;
 use Framework\Responses\ResponseInterface;
 use Framework\ServiceContainer;
 use Models\Repository;
+use Utils\BackupPayload;
 use Utils\ServerBackupRestorer;
 use function Framework\success;
 
@@ -18,7 +19,8 @@ use function Framework\success;
  *
  * 恢复把备份里的 token_hash / token_salt 原样写回 servers 表（Hub 地址不变时
  * agent 无需重装），因此备份文件等同凭据材料：
- *   - 响应只回 { dry_run, mode, note, removed, summary, items }，逐条只含
+ *   - 响应只回 { dry_run, mode, note, removed, summary, items }（预检按 refinements.md
+ *     §4.5 扁平化为 { new, updated, same, skipped, failed, ... }），逐条只含
  *     name / status / message，绝不回显哈希与盐（用户态白名单在 ServerPayload）；
  *   - 本控制器不写日志，错误信息也不带凭据字段；
  *   - 依赖框架默认登录态与 CSRF 校验，不加入任何认证 / CSRF / migrate 跳过名单。
@@ -73,6 +75,6 @@ class BackupServersRestoreController implements ControllerInterface
 			}
 		}
 
-		return success($message, $result);
+		return success($message, $dryRun ? BackupPayload::flattenPreview($result) : $result);
 	}
 }

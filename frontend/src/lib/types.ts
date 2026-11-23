@@ -567,7 +567,7 @@ export type BackupRestoreSummaryType = {
   failed: number;
 };
 
-/** 恢复结果（预检 dry_run=true / 执行 dry_run=false 共用同形） */
+/** 恢复结果（执行 dry_run=false；预检响应为扁平字段，由 mainStore 归一化后同形） */
 export type BackupRestoreResultType = {
   dry_run: boolean;
   mode: BackupRestoreModeType;

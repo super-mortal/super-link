@@ -109,7 +109,7 @@
 - 三点按钮中心与计数中心对齐：右偏移 -0.25rem，不再偏左。
 - 三点颜色使用 `--foreground`，比原侧栏前景更深。
 - 点三点菜单中的「颜色」展开色板时，父级标签菜单必须保持打开，父容器不得裁剪子菜单。
-- 平台 / 分组当前没有行级操作，暂不提供三点菜单；计数常显（待确认）。
+- 平台 / 分组同样提供三点菜单（hover 时计数隐藏、三点出现），菜单里只有「颜色」与「恢复默认颜色」：平台 / 分组没有编辑 / 删除能力，色点颜色覆盖值只存浏览器本地偏好（localStorage `sidebar-dot-colors`），不入库、不参与筛选。
 
 ### 2.3 移除「全部」入口（O-14）
 
@@ -217,6 +217,8 @@
 | `frontend/src/components/Sidebar/SidebarTag.tsx` | 三点与计数对齐、颜色加深；父 / 叶子名称对齐；「颜色」子菜单保持父菜单与子菜单同时可见 |
 | `frontend/src/components/Sidebar/AppSidebar.tsx` | `NavTags` 去掉 `itemCount`；`NavServerGroups` 补颜色点并接入统一外壳 |
 | `frontend/src/components/Sidebar/SidebarAllRow.tsx` | 删除文件（无其他引用） |
+| `frontend/src/components/Sidebar/SidebarSection.tsx` / `SidebarFilterRow.tsx` / `lib/sidebarRow.ts` | 第二区统一外壳、共用筛选行与行几何常量 |
+| `frontend/src/components/Sidebar/SidebarDotColorMenu.tsx` / `lib/sidebarDotColor.ts` | 平台 / 分组三点菜单（颜色 / 恢复默认）与 localStorage 偏好 |
 | `frontend/src/components/Sidebar/ModuleSwitcher.tsx` | `ServerCog` → `Server` |
 | `frontend/src/components/EditItem/` | 表单顺序：标题在网址之前 |
 | `frontend/src/components/Settings/` | 新增 `SettingsBackupSection` / `BackupCard` / `RestoreDialog` |
@@ -230,8 +232,8 @@
 - [ ] 点击标签 / 平台筛选，再次点击取消；锁定态平台提示解锁。
 - [ ] 切换四个模块时第二区头部与列表起点不变；开关搜索列表不跳动。
 - [ ] 标签、平台、分组名称左对齐，行高与计数一致。
-- [ ] 平台 / 分组显示颜色点；标签 hover 三点与计数对齐、颜色更深。
-- [ ] 标签菜单「颜色」可展开并生效，父菜单不被关闭。
+- [ ] 平台 / 分组显示颜色点；标签 / 平台 / 分组 hover 时计数隐藏、三点出现，且与计数中心对齐、颜色更深。
+- [ ] 标签菜单「颜色」可展开并生效，父菜单不被关闭；平台 / 分组三点菜单同样可改色点颜色、可恢复默认颜色（存 localStorage）。
 - [ ] 服务器模块图标为两层机架样式（`Server`）。
 
 ### 6.2 界面细节
@@ -279,7 +281,7 @@
 
 ## 8. 待确认问题
 
-1. 平台 / 分组是否需要行级三点菜单？菜单动作是什么？
+1. ~~平台 / 分组是否需要行级三点菜单？菜单动作是什么？~~ 已确认：提供三点菜单，动作仅「颜色 / 恢复默认颜色」，颜色覆盖存 localStorage。
 2. 移动端是否需要额外补齐「清除筛选」入口？（推荐：不加，保持 O-12）
 3. 品牌 Logo 是否继续补 Apple / Notion / Figma / Slack / AWS？
 4. Skill 标签是否需要在后续版本备份与恢复？（推荐：后续按标题映射）
@@ -315,3 +317,4 @@
 
 - 2026-11-22：首版。合并原侧栏两份文档与备份恢复文档；补充界面细节优化、平台 / 分组颜色点、三点对齐、颜色子菜单、不发布新版本的说明。
 - 2026-11-23：随实施收口对齐文档与代码——账号库分区标题改为「平台」；服务器备份字段改为 `group`（说明没有 `group_id`）；预检响应写明扁平字段与执行响应的 `summary` 结构；旧导出补充「已按 `module='bookmarks'` 过滤标签」；验收条「三行元信息」更正为两行；设置页分区名统一为「数据备份」。
+- 2026-11-23：平台 / 分组行补齐三点菜单（仅「颜色 / 恢复默认颜色」），色点颜色覆盖存 localStorage；原型同步。

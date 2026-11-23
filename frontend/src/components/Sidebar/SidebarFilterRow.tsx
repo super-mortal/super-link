@@ -24,7 +24,7 @@ type SidebarFilterRowProps = {
   isParent?: boolean;
   /** 选中态：浅色底 + 主色文字，无左侧色条（与模块行的实心选中区分） */
   isActive?: boolean;
-  /** 右侧 hover 动作（三点菜单）；不传则计数常显、不出现三点（平台 / 分组暂无线级操作） */
+  /** 右侧 hover 动作（三点菜单）；不传则计数常显、不出现三点 */
   action?: React.ReactNode;
   onClick?: () => void;
   /** 悬停提示，默认取 label */

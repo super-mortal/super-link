@@ -22,7 +22,10 @@ import { NavTags } from '@/components/Sidebar/NavTags.tsx';
 import { NavPlatforms } from '@/components/Sidebar/NavPlatforms.tsx';
 import { SidebarSection } from '@/components/Sidebar/SidebarSection.tsx';
 import { SidebarFilterRow } from '@/components/Sidebar/SidebarFilterRow.tsx';
+import { SidebarDotColorMenu } from '@/components/Sidebar/SidebarDotColorMenu.tsx';
 import { SERVER_GROUP_DOT, SERVER_GROUPS } from '@/lib/serverFormat.ts';
+import { sidebarDotColors } from '@/lib/sidebarDotColor.ts';
+import { getColorClass } from '@/lib/utils.ts';
 import { ItemType, ServerGroupType, SkillType } from '@/lib/types.ts';
 
 /**
@@ -58,16 +61,22 @@ const NavServerGroups = observer(() => {
   return (
     <SidebarSection label="分组">
       <SidebarMenu>
-        {SERVER_GROUPS.map((group) => (
-          <SidebarFilterRow
-            key={group}
-            label={group}
-            count={store.serverGroups[group] ?? 0}
-            dotClass={SERVER_GROUP_DOT[group]}
-            isActive={activeGroup === group}
-            onClick={() => selectGroup(group)}
-          />
-        ))}
+        {SERVER_GROUPS.map((group) => {
+          // 三点菜单里可把固定分组色点改成调色板颜色（纯视觉偏好，存 localStorage）
+          const override = sidebarDotColors.get('group', group);
+
+          return (
+            <SidebarFilterRow
+              key={group}
+              label={group}
+              count={store.serverGroups[group] ?? 0}
+              dotClass={override ? getColorClass(override) : SERVER_GROUP_DOT[group]}
+              isActive={activeGroup === group}
+              action={<SidebarDotColorMenu scope="group" name={group} />}
+              onClick={() => selectGroup(group)}
+            />
+          );
+        })}
       </SidebarMenu>
     </SidebarSection>
   );

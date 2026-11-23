@@ -3,10 +3,13 @@ import { observer } from 'mobx-react-lite';
 import { toast } from 'sonner';
 
 import { SidebarMenu, useSidebar } from '@/components/ui/sidebar.tsx';
+import { SidebarDotColorMenu } from '@/components/Sidebar/SidebarDotColorMenu.tsx';
 import { SidebarFilterRow } from '@/components/Sidebar/SidebarFilterRow.tsx';
 import { SidebarSection } from '@/components/Sidebar/SidebarSection.tsx';
 import { MODULES } from '@/lib/modules.ts';
 import { platformBrandColorClass } from '@/lib/accountFormat.ts';
+import { sidebarDotColors } from '@/lib/sidebarDotColor.ts';
+import { getColorClass } from '@/lib/utils.ts';
 import { useAccountListState } from '@/hooks/useAccountListState.ts';
 import { StoreContext, VaultStoreContext } from '@/store/storeContext.ts';
 
@@ -66,16 +69,22 @@ export const NavPlatforms = observer(() => {
     <SidebarSection label={MODULES.accounts.sectionLabel}>
       {platformCounts.length > 0 ? (
         <SidebarMenu>
-          {platformCounts.map(({ name, count }) => (
-            <SidebarFilterRow
-              key={name}
-              label={name}
-              count={count}
-              dotClass={platformBrandColorClass(name)}
-              isActive={platform === name}
-              onClick={() => selectPlatform(name)}
-            />
-          ))}
+          {platformCounts.map(({ name, count }) => {
+            // 三点菜单里可把品牌色点改成调色板颜色（纯视觉偏好，存 localStorage）
+            const override = sidebarDotColors.get('platform', name);
+
+            return (
+              <SidebarFilterRow
+                key={name}
+                label={name}
+                count={count}
+                dotClass={override ? getColorClass(override) : platformBrandColorClass(name)}
+                isActive={platform === name}
+                action={<SidebarDotColorMenu scope="platform" name={name} />}
+                onClick={() => selectPlatform(name)}
+              />
+            );
+          })}
         </SidebarMenu>
       ) : (
         <p className="text-muted-foreground px-2 text-xs">暂无账号</p>

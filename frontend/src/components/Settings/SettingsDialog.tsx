@@ -8,17 +8,21 @@ import { observer } from 'mobx-react-lite';
 import { SettingsAuth } from './SettingsAuth';
 import { SettingsIntegrations } from './SettingsIntegrations.tsx';
 import { SettingsImport } from './SettingsImport';
-import { SettingsBackup } from './SettingsBackup';
+import { RestoreDialog } from './RestoreDialog';
+import { SettingsBackupSection } from './SettingsBackupSection';
 import { SettingsVault } from './Vault.tsx';
 import { SettingsNetwork } from './SettingsNetwork.tsx';
 
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { SettingsAbout } from '@/components/Settings/SettingsAbout.tsx';
+import type { BackupModuleType } from '@/lib/types';
 import { cn } from '@/lib/utils.ts';
 
 export const SettingsDialog = observer(() => {
   const store = React.useContext(StoreContext);
+  /** 恢复弹窗当前板块；null = 未打开（关闭后回到 null，弹窗内部随之重置） */
+  const [restoreModule, setRestoreModule] = React.useState<BackupModuleType | null>(null);
 
   const navLinks = [
     { id: 'auth', title: '认证', icon: Keyboard, component: <SettingsAuth />, warningMessage: null },
@@ -34,7 +38,7 @@ export const SettingsDialog = observer(() => {
       id: 'backup',
       title: '备份',
       icon: Database,
-      component: <SettingsBackup />,
+      component: <SettingsBackupSection onRestore={setRestoreModule} />,
       warningMessage: null,
     },
     {
@@ -128,6 +132,17 @@ export const SettingsDialog = observer(() => {
           </Tabs>
         </div>
       </DialogContent>
+
+      {/* 板块级恢复弹窗：由备份分区的 onRestore(module) 唤起，关闭即回到 null */}
+      <RestoreDialog
+        open={restoreModule !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setRestoreModule(null);
+          }
+        }}
+        module={restoreModule ?? 'bookmarks'}
+      />
     </Dialog>
   );
 });

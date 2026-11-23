@@ -4,7 +4,7 @@ import { observer } from 'mobx-react-lite';
 import { toast } from 'sonner';
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { StoreContext } from '@/store/storeContext';
+import { StoreContext, VaultStoreContext } from '@/store/storeContext';
 import type { BackupModuleType } from '@/lib/types';
 import { BackupCard } from './BackupCard';
 import { VaultTransferCard } from './Vault/VaultTransferCard';
@@ -27,7 +27,40 @@ export type SettingsBackupSectionProps = {
  */
 export const SettingsBackupSection = observer(({ onRestore }: SettingsBackupSectionProps) => {
   const store = React.useContext(StoreContext);
+  const vault = React.useContext(VaultStoreContext);
   const [exportingModule, setExportingModule] = React.useState<BackupModuleType | null>(null);
+  /** 条数补齐只做一次：失败也不在本次挂载内重试（避免请求失败后 loading 翻转引发循环） */
+  const countsRequestedRef = React.useRef(false);
+
+  /**
+   * 进入「备份」分区时补齐服务器 / 账号库条数。
+   *
+   * 侧栏只在进入 /servers、/accounts 时才拉对应列表，直接从设置页打开备份分区时
+   * store 里可能还没有总数；这里按既有方式补一次拉取（仍走 store，组件内不 fetch）。
+   * 账号库先确认 vault.initialized：未初始化时 /api/accounts 返回 409，不能硬拉；
+   * 元信息也拉取失败（metaLoadFailed）时放弃，避免反复请求。
+   */
+  React.useEffect(() => {
+    if (countsRequestedRef.current) {
+      return;
+    }
+
+    if (vault.initialized === null) {
+      if (!vault.isPending && !vault.metaLoadFailed) {
+        void vault.loadMeta();
+      }
+      return;
+    }
+
+    countsRequestedRef.current = true;
+
+    if (store.serverTotal === 0) {
+      void store.fetchServers(store.serverListParams);
+    }
+    if (vault.initialized === true && store.accountTotal === 0) {
+      void store.fetchAccounts();
+    }
+  }, [vault, vault.initialized, vault.isPending, store]);
 
   const handleExport = async (module: BackupModuleType) => {
     setExportingModule(module);

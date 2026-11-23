@@ -1222,6 +1222,25 @@ class Repository
 	}
 
 	/**
+	 * 枚举服务器备份所需的配置行（refinements.md §4.2 / dev-spec §6.4）
+	 *
+	 * 这是「用户态响应不碰 token_hash / token_salt」纪律的唯一例外：服务器备份要
+	 * 把哈希与盐原样导出，恢复端写回后 agent 无需重装即可继续认证（dev-spec §6.4）。
+	 * 只被 GET /api/backup/servers 调用，该端点响应显式 no-store；常规列表 / 详情
+	 * 继续走 SERVER_PUBLIC_COLUMNS，不得复用本方法。
+	 *
+	 * 不联明细表：历史指标 / 磁盘 / Docker 都不在备份范围（dev-spec §1）；
+	 * 按 id 升序输出，恢复时同名判重的顺序稳定可复现。
+	 */
+	public function getServersForBackup(): array
+	{
+		$stmt = $this->pdo->query(
+			'SELECT name, note, group_name, paused, token_hash, token_salt FROM servers ORDER BY id ASC'
+		);
+		return $stmt->fetchAll(PDO::FETCH_ASSOC);
+	}
+
+	/**
 	 * 枚举全部服务器的 agent 认证材料（connect / report 的 Token 校验用）
 	 *
 	 * 盐每服务器随机（Utils\ServerToken），Token 校验无法按哈希直接检索，

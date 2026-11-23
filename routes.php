@@ -15,6 +15,8 @@ use Controllers\AppUpdateController;
 use Controllers\AuthLoginController;
 use Controllers\AuthLogoutController;
 use Controllers\BackupBookmarksGetController;
+use Controllers\BackupServersGetController;
+use Controllers\BackupSkillsGetController;
 use Controllers\ExportDataController;
 use Controllers\ImportBookmarksController;
 use Controllers\ImportDataController;
@@ -264,6 +266,14 @@ return [
 		'backup' => [
 			'bookmarks' => [
 				'GET' => BackupBookmarksGetController::class,
+			],
+			// Skill 备份只含 GitHub 来源清单（skipped.upload 记录被跳过的本地上传数）；
+			// 服务器备份含 Token 哈希 / 盐（恢复后 agent 免重装），故两端点均 no-store
+			'skills' => [
+				'GET' => BackupSkillsGetController::class,
+			],
+			'servers' => [
+				'GET' => BackupServersGetController::class,
 			],
 		],
 		'import' => [

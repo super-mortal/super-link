@@ -14,6 +14,7 @@ use Controllers\AppInfoController;
 use Controllers\AppUpdateController;
 use Controllers\AuthLoginController;
 use Controllers\AuthLogoutController;
+use Controllers\BackupBookmarksGetController;
 use Controllers\ExportDataController;
 use Controllers\ImportBookmarksController;
 use Controllers\ImportDataController;
@@ -254,6 +255,15 @@ return [
 		'export' => [
 			'data' => [
 				'GET' => ExportDataController::class,
+			],
+		],
+		// 备份（refinements.md §4）：新格式按模块拆分，响应体即备份文件内容
+		// （data() 裸对象 + no-store），不走 success 包裹；恢复端点
+		// /api/backup/<module>/restore 由后续任务在本分组内注册。
+		// 旧 GET /api/export/data 保留并复用同一份字段映射（见其上方的兼容说明）
+		'backup' => [
+			'bookmarks' => [
+				'GET' => BackupBookmarksGetController::class,
 			],
 		],
 		'import' => [

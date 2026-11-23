@@ -15,6 +15,7 @@ use Controllers\AppUpdateController;
 use Controllers\AuthLoginController;
 use Controllers\AuthLogoutController;
 use Controllers\BackupBookmarksGetController;
+use Controllers\BackupBookmarksRestoreController;
 use Controllers\BackupServersGetController;
 use Controllers\BackupSkillsGetController;
 use Controllers\ExportDataController;
@@ -260,12 +261,16 @@ return [
 			],
 		],
 		// 备份（refinements.md §4）：新格式按模块拆分，响应体即备份文件内容
-		// （data() 裸对象 + no-store），不走 success 包裹；恢复端点
-		// /api/backup/<module>/restore 由后续任务在本分组内注册。
+		// （data() 裸对象 + no-store），不走 success 包裹；恢复端点为 POST
+		// /api/backup/<module>/restore（multipart 上传，默认登录态 + CSRF 校验）。
+		// Skill / 服务器恢复端点的注册由各自任务补齐。
 		// 旧 GET /api/export/data 保留并复用同一份字段映射（见其上方的兼容说明）
 		'backup' => [
 			'bookmarks' => [
 				'GET' => BackupBookmarksGetController::class,
+				'restore' => [
+					'POST' => BackupBookmarksRestoreController::class,
+				],
 			],
 			// Skill 备份只含 GitHub 来源清单（skipped.upload 记录被跳过的本地上传数）；
 			// 服务器备份含 Token 哈希 / 盐（恢复后 agent 免重装），故两端点均 no-store

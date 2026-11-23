@@ -273,7 +273,7 @@ export const ServerDetailPage = observer(() => {
 
   return (
     <Dashboard>
-      <div className="h-full overflow-y-auto">
+      <div className="no-scrollbar h-full overflow-y-auto">
         <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-4 p-5">
           {backButton}
 

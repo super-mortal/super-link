@@ -234,7 +234,7 @@ const AddTagPopover = observer(
             autoComplete="off"
           />
           <Separator className="my-2" />
-          <div className="flex max-h-56 flex-col gap-0.5 overflow-y-auto">
+          <div className="no-scrollbar flex max-h-56 flex-col gap-0.5 overflow-y-auto">
             {store.tagsArray.length === 0 ? (
               <p className="text-muted-foreground px-2 py-1.5 text-xs">暂无标签</p>
             ) : (
@@ -264,7 +264,7 @@ const AddTagPopover = observer(
 
 const DetailSkeleton = () => (
   <Dashboard>
-    <div className="h-full overflow-y-auto p-5">
+    <div className="no-scrollbar h-full overflow-y-auto p-5">
       <Skeleton className="mb-4 h-4 w-32" />
       <div className="rounded-lg border p-5">
         <Skeleton className="h-5 w-52" />
@@ -439,7 +439,7 @@ export const SkillDetail = observer(() => {
 
   return (
     <Dashboard>
-      <div className="h-full overflow-y-auto">
+      <div className="no-scrollbar h-full overflow-y-auto">
         <div className="mx-auto w-full max-w-[1600px] p-5">
           <div className="mb-4 flex items-center gap-2">
             <SidebarToggler />

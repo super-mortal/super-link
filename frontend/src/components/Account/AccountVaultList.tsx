@@ -381,7 +381,7 @@ export const AccountVaultList = observer(() => {
           }
         />
 
-        <div ref={setScrollContainerNode} className="h-full overflow-x-clip overflow-y-scroll">
+        <div ref={setScrollContainerNode} className="no-scrollbar h-full overflow-x-clip overflow-y-scroll">
           {store.accounts.length > 0 ? (
             <div className={`flex h-full flex-col justify-between gap-5 module-list--${layout}`}>
               {layouts[layout]}

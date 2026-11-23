@@ -90,7 +90,7 @@ export const AccountDetail = observer(() => {
 
   return (
     <Dashboard>
-      <div className="h-full overflow-y-auto p-5">
+      <div className="no-scrollbar h-full overflow-y-auto p-5">
         <div className="mb-4 flex items-center gap-2">
           <SidebarToggler />
           <button

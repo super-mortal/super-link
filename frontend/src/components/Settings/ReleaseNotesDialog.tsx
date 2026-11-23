@@ -320,7 +320,7 @@ export const ReleaseNotesDialog = observer(({ open, onOpenChange, onConfirmUpdat
         ) : phase === 'idle' ? (
           body ? (
             <div
-              className="max-h-[50vh] overflow-y-auto rounded-md border p-3 text-sm leading-relaxed"
+              className="no-scrollbar max-h-[50vh] overflow-y-auto rounded-md border p-3 text-sm leading-relaxed"
               // body 是 GitHub Release 的 Markdown 原文：renderReleaseMarkdown 已整体转义并只放行
               // http/https 链接，渲染结果才能安全地作为 HTML 注入
               dangerouslySetInnerHTML={{ __html: renderReleaseMarkdown(body) }}

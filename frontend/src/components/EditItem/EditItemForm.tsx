@@ -242,7 +242,10 @@ const EditItemForm = observer(
       <Form {...form}>
         <form onSubmit={form.handleSubmit(handleSaveClose)}>
           <div
-            className={'h-[100dvh] overflow-y-auto p-6' + (!isCloseWindowOnSubmit ? ' md:h-auto md:max-h-[95dvh]' : '')}
+            className={
+              'no-scrollbar h-[100dvh] overflow-y-auto p-6' +
+              (!isCloseWindowOnSubmit ? ' md:h-auto md:max-h-[95dvh]' : '')
+            }
           >
             <h2 className="mb-3 text-left text-xl font-semibold tracking-tight">
               {showBackButton && (

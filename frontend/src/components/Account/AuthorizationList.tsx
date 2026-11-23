@@ -124,7 +124,7 @@ export const AuthorizationList = observer(({ authorizations, accountId, onRefres
           </p>
         ) : (
           // 授权可能几十条：卡片区内部滚动，避免把详情页的备注与右栏挤出首屏（PRD §10.4）
-          <div className="max-h-[21rem] overflow-y-auto pr-1">
+          <div className="no-scrollbar max-h-[21rem] overflow-y-auto pr-1">
             <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
               {filtered.map((item) => (
                 <AuthorizationCard

@@ -88,7 +88,7 @@ export const ServerListPage = observer(() => {
     <Dashboard>
       <div className="flex h-full flex-col">
         {toolbar}
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto">
           {servers.length > 0 ? (
             <div className="grid grid-cols-[repeat(auto-fill,minmax(19rem,1fr))] gap-4 p-4">
               {servers.map((server) => (

@@ -78,7 +78,7 @@ export const Dashboard = observer(({ children }: { children: React.ReactNode }) 
               </ResizablePanel>
             )}
             <ResizablePanel>
-              <main className="@container/main h-full">{children}</main>
+              <main className="no-scrollbar @container/main h-full">{children}</main>
             </ResizablePanel>
           </ResizablePanelGroup>
         </SidebarProvider>

@@ -453,7 +453,7 @@ export const AccountDialog = observer(
               <Spinner className="text-muted-foreground size-6" />
             </div>
           ) : (
-            <div className="flex max-h-[65vh] flex-col gap-5 overflow-y-auto pr-1">
+            <div className="no-scrollbar flex max-h-[65vh] flex-col gap-5 overflow-y-auto pr-1">
               {decryptWarning ? <p className="text-destructive text-xs">{decryptWarning}</p> : null}
 
               <DialogSection title="基础信息">

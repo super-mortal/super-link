@@ -22,8 +22,9 @@ const MD_LINK_CLASS = 'text-primary underline underline-offset-2';
 /**
  * 把 GitHub Release 的 body（Markdown 原文）渲染为 HTML 字符串。
  *
- * 只支持发布说明约定的小子集：`##` / `###` 标题、`-` 列表、段落、行内代码（反引号）与行内链接。
- * 安全：所有文本先整体 HTML 转义，再套行内代码与链接；链接只放行 http/https 协议并统一
+ * 只支持发布说明约定的小子集：`#` / `##` / `###` 标题、`-` / `*` 列表、段落、
+ * 行内代码（反引号）、加粗（`**x**`）与行内链接。
+ * 安全：所有文本先整体 HTML 转义，再套行内代码 / 加粗 / 链接；链接只放行 http/https 协议并统一
  * `target="_blank" rel="noopener noreferrer"`，因此 body 里的 `<script>`、`<img onerror>`、
  * `javascript:` 链接等都只会作为纯文本展示，不会执行（PRD O-4 验收标准）。
  */
@@ -36,21 +37,32 @@ export function renderReleaseMarkdown(markdown: string): string {
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
 
-  // 行内代码与链接：入参已转义，反引号内整体作为 code，不再解析其中语法
+  /**
+   * 行内渲染：先把反引号代码段切出来单独处理，其余文本整体转义后再套加粗与链接。
+   * 先切代码段是为了让 `` `**x**` `` 里的星号保持原样，不被当成加粗。
+   */
   const renderInline = (text: string): string =>
-    escapeHtml(text)
-      .replace(/`([^`]+)`/g, `<code class="${MD_CODE_CLASS}">$1</code>`)
-      .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (match, label: string, url: string) => {
-        try {
-          const parsed = new URL(url, 'https://github.com');
-          if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-            return match; // 非 http(s) 协议按纯文本展示，不放行
-          }
-          return `<a class="${MD_LINK_CLASS}" href="${parsed.href}" target="_blank" rel="noopener noreferrer">${label}</a>`;
-        } catch {
-          return match;
+    text
+      .split(/(`[^`]+`)/g)
+      .map((part) => {
+        if (part.length > 2 && part.startsWith('`') && part.endsWith('`')) {
+          return `<code class="${MD_CODE_CLASS}">${escapeHtml(part.slice(1, -1))}</code>`;
         }
-      });
+        return escapeHtml(part)
+          .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+          .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (match, label: string, url: string) => {
+            try {
+              const parsed = new URL(url, 'https://github.com');
+              if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+                return match; // 非 http(s) 协议按纯文本展示，不放行
+              }
+              return `<a class="${MD_LINK_CLASS}" href="${parsed.href}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+            } catch {
+              return match;
+            }
+          });
+      })
+      .join('');
 
   const blocks: string[] = [];
   let inList = false;
@@ -67,6 +79,11 @@ export function renderReleaseMarkdown(markdown: string): string {
       closeList();
       continue;
     }
+    if (line.startsWith('# ')) {
+      closeList();
+      blocks.push(`<h4 class="mt-4 mb-1 text-base font-semibold first:mt-0">${renderInline(line.slice(2))}</h4>`);
+      continue;
+    }
     if (line.startsWith('## ')) {
       closeList();
       blocks.push(`<h4 class="mt-4 mb-1 text-sm font-semibold first:mt-0">${renderInline(line.slice(3))}</h4>`);
@@ -77,7 +94,8 @@ export function renderReleaseMarkdown(markdown: string): string {
       blocks.push(`<h5 class="mt-3 mb-1 text-sm font-medium first:mt-0">${renderInline(line.slice(4))}</h5>`);
       continue;
     }
-    if (line.startsWith('- ')) {
+    // `-` 与 `*` 都是列表项：GitHub 自动生成的 changelog 用 `*`
+    if (line.startsWith('- ') || line.startsWith('* ')) {
       if (!inList) {
         blocks.push('<ul class="my-1 list-disc space-y-0.5 pl-5">');
         inList = true;

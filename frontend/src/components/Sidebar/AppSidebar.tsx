@@ -23,19 +23,20 @@ import { NavPlatforms } from '@/components/Sidebar/NavPlatforms.tsx';
 import { SidebarSection } from '@/components/Sidebar/SidebarSection.tsx';
 import { SidebarFilterRow } from '@/components/Sidebar/SidebarFilterRow.tsx';
 import { SidebarDotColorMenu } from '@/components/Sidebar/SidebarDotColorMenu.tsx';
-import { SERVER_GROUP_DOT, SERVER_GROUPS } from '@/lib/serverFormat.ts';
+import { getServerGroupDotClass, getServerGroupNames } from '@/lib/serverFormat.ts';
 import { sidebarDotColors } from '@/lib/sidebarDotColor.ts';
 import { getColorClass } from '@/lib/utils.ts';
 import { ItemType, ServerGroupType, SkillType } from '@/lib/types.ts';
 
 /**
- * 侧栏「服务器分组」分区（PRD §5.5 / 决策 D10 / refinements.md §2.1~§2.3）。
+ * 侧栏「服务器分组」分区（PRD §5.5 / 决策 D10 / refinements-v0.1.2 §3.1~§3.3）。
  *
- * 分组固定四项（SERVER_GROUPS，与后端 ServerPayload::GROUPS 一致），每项带计数；
+ * 分组来自 server_groups 字典（不再固定四项）：优先用 store.serverGroupDict 的排序结果，
+ * 字典未加载时回落列表接口的计数键（后端按字典输出全部名称，键集合一致），每项带计数。
  * 点击筛选、再点取消，不设「全部」行——无选中即全部。
  *
  * 计数取后端响应里的 store.serverGroups：按搜索命中全集统计、不受当前分组筛选影响，
- * 且四项恒定返回（为 0 也展示，与账号库平台分区行为对齐）。
+ * 且为 0 的分组也返回（与账号库平台分区行为对齐）。
  * 选中态存 store.serverListParams.group（而非组件 state）：task11 列表页直接消费同一份
  * 参数，点击即按新条件重新拉取，侧栏与列表始终同源。
  *
@@ -47,6 +48,8 @@ const NavServerGroups = observer(() => {
   const { isMobile, toggleSidebar } = useSidebar();
 
   const activeGroup = store.serverListParams.group ?? null;
+  const groupNames =
+    store.serverGroupDict.length > 0 ? getServerGroupNames(store.serverGroupDict) : Object.keys(store.serverGroups);
 
   const selectGroup = (group: ServerGroupType) => {
     // 再点一次当前分组即取消筛选（回落全量），与账号库平台筛选同款交互
@@ -61,8 +64,8 @@ const NavServerGroups = observer(() => {
   return (
     <SidebarSection label="分组">
       <SidebarMenu>
-        {SERVER_GROUPS.map((group) => {
-          // 三点菜单里可把固定分组色点改成调色板颜色（纯视觉偏好，存 localStorage）
+        {groupNames.map((group) => {
+          // 三点菜单里可把分组色点改成调色板颜色（纯视觉偏好，存 localStorage）
           const override = sidebarDotColors.get('group', group);
 
           return (
@@ -70,7 +73,7 @@ const NavServerGroups = observer(() => {
               key={group}
               label={group}
               count={store.serverGroups[group] ?? 0}
-              dotClass={override ? getColorClass(override) : SERVER_GROUP_DOT[group]}
+              dotClass={override ? getColorClass(override) : getServerGroupDotClass(group)}
               isActive={activeGroup === group}
               action={<SidebarDotColorMenu scope="group" name={group} />}
               onClick={() => selectGroup(group)}

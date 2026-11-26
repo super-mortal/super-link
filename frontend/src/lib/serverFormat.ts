@@ -10,31 +10,60 @@
 
 import { formatRelativePast } from '@/lib/accountFormat.ts';
 import type {
-  ServerGroupType,
+  GroupDictItemType,
   ServerOrderType,
   ServerRangeType,
   ServerSortType,
   ServerStatusType,
 } from '@/lib/types.ts';
 
-/** 分组白名单固定四项（后端 ServerPayload::GROUPS，决策 D10）；数组顺序即侧栏展示顺序 */
-export const SERVER_GROUPS: ServerGroupType[] = ['家庭', '公网', '公司', '归档'];
-
-/** 默认分组：新增弹窗预选与后端建表默认值一致（PRD §5.1） */
-export const SERVER_DEFAULT_GROUP: ServerGroupType = '家庭';
-
 /**
- * 分组固定色点（refinements.md §2.2）：家庭 绿、公网 蓝、公司 琥珀、归档 灰。
+ * 分组展示改由字典驱动（refinements-v0.1.2 §3.1 / §3.2）：
+ * 分组名称来自 server_groups 字典，不再有固定四项常量。以下 helper 只做
+ * 「字典 → 展示」的纯函数映射，组件统一从这里取，禁止再写一份名称 / 颜色表。
  *
- * 分组固定色是纯视觉识别，不参与筛选逻辑；全项目只维护这一份映射（NavServerGroups 消费），
- * 禁止在组件里再写 map。与 SERVER_STATUS 同口径用 Tailwind 调色板类并带暗色变体，不写十六进制。
+ * 分组色点（refinements.md §2.2）是纯视觉识别，不参与筛选：
+ * 四个种子分组保持历史配色，字典里新增的分组按名称 hash 取调色板，保证同一分组
+ * 每次渲染颜色稳定。只用 Tailwind 语义调色板类并带暗色变体，不写十六进制。
  */
-export const SERVER_GROUP_DOT: Record<ServerGroupType, string> = {
+const SERVER_GROUP_DOT_PALETTE = [
+  'bg-green-500',
+  'bg-blue-500',
+  'bg-amber-500',
+  'bg-neutral-400 dark:bg-neutral-500',
+  'bg-violet-500',
+  'bg-rose-500',
+  'bg-cyan-500',
+  'bg-teal-500',
+];
+
+/** 种子分组的历史固定色（与 v0.1.1 展示一致） */
+const SERVER_GROUP_DOT_SEEDS: Record<string, string> = {
   家庭: 'bg-green-500',
   公网: 'bg-blue-500',
   公司: 'bg-amber-500',
   归档: 'bg-neutral-400 dark:bg-neutral-500',
 };
+
+/** 名称 → 稳定整数（简单 31 进制 hash，仅用于选色，不参与业务） */
+const hashGroupName = (name: string): number => {
+  let hash = 0;
+  for (let index = 0; index < name.length; index += 1) {
+    hash = (hash * 31 + name.charCodeAt(index)) >>> 0;
+  }
+  return hash;
+};
+
+/** 分组色点：种子分组固定色，字典外分组按名称 hash 稳定取调色板色 */
+export const getServerGroupDotClass = (name: string): string =>
+  SERVER_GROUP_DOT_SEEDS[name] ?? SERVER_GROUP_DOT_PALETTE[hashGroupName(name) % SERVER_GROUP_DOT_PALETTE.length];
+
+/** 分组名称列表（按 sort 升序、同 sort 按名称本地化排序）：表单下拉与侧栏共用 */
+export const getServerGroupNames = (groups: GroupDictItemType[]): string[] =>
+  [...groups].sort((a, b) => a.sort - b.sort || a.name.localeCompare(b.name)).map((group) => group.name);
+
+/** 默认分组：sort 最小的分组（与后端新增接口缺省规则一致）；字典为空时返回空串 */
+export const getDefaultServerGroupName = (groups: GroupDictItemType[]): string => getServerGroupNames(groups)[0] ?? '';
 
 /**
  * 连接状态四态展示（PRD §5.1 卡片状态点 / 详情页徽章）。

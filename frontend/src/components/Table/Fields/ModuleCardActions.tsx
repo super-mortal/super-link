@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { observer } from 'mobx-react-lite';
-import { Copy, Download, Ellipsis, Eye, Maximize2, Pencil, RefreshCw, Star, Trash2 } from 'lucide-react';
+import { Copy, Download, Ellipsis, Eye, Maximize2, Pencil, RefreshCw, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { StoreContext } from '@/store/storeContext.ts';
 import { MODULES } from '@/lib/modules.ts';
@@ -118,14 +118,6 @@ export const ModuleCardActions = observer(({ module, item }: { module: ModuleKey
     store.fetchItems();
   };
 
-  /** 收藏只是账号标记（星标），不进入筛选视图（PRD §9.5）；更新后列表自动刷新 */
-  const toggleFavorite = async () => {
-    if (!isAccount) {
-      return;
-    }
-    await store.updateAccount(item.id, { favorite: !item.favorite });
-  };
-
   return (
     <div className="flex items-center gap-1" onClick={(event) => event.stopPropagation()}>
       <button
@@ -181,10 +173,6 @@ export const ModuleCardActions = observer(({ module, item }: { module: ModuleKey
               <DropdownMenuItem onSelect={() => accountDialog?.openEdit(item.id)}>
                 <Pencil />
                 编辑
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={toggleFavorite}>
-                <Star />
-                {item.favorite ? '取消收藏' : '收藏'}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
             </>

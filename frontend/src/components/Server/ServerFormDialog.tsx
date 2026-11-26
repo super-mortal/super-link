@@ -20,8 +20,8 @@ import { Spinner } from '@/components/ui/spinner.tsx';
 import { Textarea } from '@/components/ui/textarea.tsx';
 import { ServerTokenGuide } from '@/components/Server/ServerTokenGuide.tsx';
 import { StoreContext } from '@/store/storeContext.ts';
-import { SERVER_DEFAULT_GROUP, SERVER_GROUPS } from '@/lib/serverFormat.ts';
-import type { ServerCreateResultType, ServerGroupType, ServerWithStatusType } from '@/lib/types.ts';
+import { getDefaultServerGroupName, getServerGroupNames } from '@/lib/serverFormat.ts';
+import type { ServerCreateResultType, ServerWithStatusType } from '@/lib/types.ts';
 
 /**
  * 添加 / 编辑服务器弹窗（PRD §5.1「新增 / 编辑」，原型 openServerAddModal）。
@@ -46,8 +46,9 @@ const serverFormSchema = z.object({
     .min(1, { message: '服务器名称不能为空' })
     .max(MAX_NAME_LENGTH, { message: `服务器名称不能超过 ${MAX_NAME_LENGTH} 个字符` }),
   note: z.string().max(MAX_NOTE_LENGTH, { message: `备注不能超过 ${MAX_NOTE_LENGTH} 个字符` }),
-  // 分组白名单固定四项（决策 D10）；预选与后端建表默认值一致
-  group: z.enum(SERVER_GROUPS),
+  // 分组来自 server_groups 字典（refinements-v0.1.2 §3.1）：只校验非空，
+  // 可选值由字典决定，是否在字典内由后端 400 兜底
+  group: z.string().min(1, { message: '请选择分组' }),
 });
 
 type ServerFormValuesType = z.infer<typeof serverFormSchema>;
@@ -72,12 +73,23 @@ export const ServerFormDialog = observer(({ open, onOpenChange, server = null, o
   const [created, setCreated] = useState<ServerCreateResultType | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  /**
+   * 分组选项来自字典（refinements-v0.1.2 §3.1）：优先 store.serverGroupDict，
+   * 字典尚未加载时回落列表接口返回的计数键（后端已按字典输出全部名称，键集合一致）。
+   * 编辑目标的分组若不在字典里也保留，避免打开表单就丢失当前值。
+   */
+  const groupNames =
+    store.serverGroupDict.length > 0 ? getServerGroupNames(store.serverGroupDict) : Object.keys(store.serverGroups);
+  const currentGroup = server?.group ?? '';
+  const defaultGroup = currentGroup || getDefaultServerGroupName(store.serverGroupDict) || groupNames[0] || '';
+  const groupOptions = currentGroup && !groupNames.includes(currentGroup) ? [currentGroup, ...groupNames] : groupNames;
+
   const form = useForm<ServerFormValuesType>({
     resolver: zodResolver(serverFormSchema),
     defaultValues: {
       name: '',
       note: '',
-      group: SERVER_DEFAULT_GROUP,
+      group: defaultGroup,
     },
   });
 
@@ -93,7 +105,7 @@ export const ServerFormDialog = observer(({ open, onOpenChange, server = null, o
     form.reset({
       name: server?.name ?? '',
       note: server?.note ?? '',
-      group: (server?.group as ServerGroupType | undefined) ?? SERVER_DEFAULT_GROUP,
+      group: server?.group ?? defaultGroup,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, serverId, form]);
@@ -215,7 +227,7 @@ export const ServerFormDialog = observer(({ open, onOpenChange, server = null, o
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {SERVER_GROUPS.map((group) => (
+                          {groupOptions.map((group) => (
                             <SelectItem key={group} value={group}>
                               {group}
                             </SelectItem>

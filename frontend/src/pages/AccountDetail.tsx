@@ -120,7 +120,6 @@ export const AccountDetail = observer(() => {
             <AccountDetailHeader
               account={detail}
               onCopyPassword={secretActions.copyPassword}
-              onRefresh={loadDetail}
               onEdit={() => setEditOpen(true)}
               onLock={() => vault.lock()}
               onDelete={handleDelete}

@@ -103,6 +103,31 @@ export type SkillUpdateType = {
   latest: string;
 };
 
+/**
+ * Skill 安装任务状态（refinements-v0.1.2 §4.4 方案 B）。
+ * 与后端 Utils\SkillInstallTaskPayload::format() 一一对应：后端在「建任务 + 异步 worker」
+ * 模式下立刻返回任务对象，前端按 id 轮询 GET /api/skills/install/status?task-id= 取真实阶段。
+ */
+export type SkillInstallTaskStatusType = 'pending' | 'running' | 'success' | 'failed';
+
+export type SkillInstallTaskType = {
+  id: number;
+  /** 由来源地址推导出的 Skill 名（失败摘要 / 进度展示用） */
+  skill_name: string;
+  source_url: string;
+  status: SkillInstallTaskStatusType;
+  /** 当前阶段文案（worker 写入），失败时停在失败阶段 */
+  stage: string;
+  /** 错误摘要或完成说明，可能为空串 */
+  message: string;
+  created_at: string | null;
+  updated_at: string | null;
+  /** 已用时长（秒）：进行中实时计算，结束后固定为创建工作到最后更新的差值 */
+  elapsed_seconds: number;
+  /** 任务成功时后端附带的 Skill 对象（与 GET /api/skills 同形）；Skill 已被删除时为 undefined */
+  skill?: SkillType;
+};
+
 /* ---------------------------------------------------------------------------
  * 账号库（PRD docs/prd/account-vault.md §6 / §8）
  * 说明：所有密文字段以 Base64 字符串在前后端间传输，落库为 BLOB；
@@ -206,7 +231,6 @@ export type AccountType = {
   login_url?: string | null;
   /** 通过库内哪个账号登录（如 X 通过 Google 主账号） */
   login_via_account_id?: number | null;
-  favorite: boolean;
   secrets?: AccountSecretsType;
   password_updated_at?: string | null;
   last_used_at?: string | null;
@@ -214,12 +238,18 @@ export type AccountType = {
   updated_at?: string | null;
 };
 
-/** 账号分组（PRD §6.3） */
-export type AccountGroupType = {
+/** 分组字典项：GET /api/servers/groups 与 GET /api/account-groups 的出参同形（refinements-v0.1.2 §3.2） */
+export type GroupDictItemType = {
   id: number;
   name: string;
+  /** 字典排序值（升序展示，sort 越小越靠前） */
   sort: number;
+  /** 组内数据条数：服务器为台数、账号为账号数；为 0 的分组也返回 */
+  count: number;
 };
+
+/** 账号分组（PRD §6.3 / refinements-v0.1.2 §3.2）：字典接口返回的名称 + 条数 */
+export type AccountGroupType = GroupDictItemType;
 
 export type AccountAuthorizationStatusType = 'active' | 'revoked';
 
@@ -271,7 +301,6 @@ export type AccountInputType = {
   platform: string;
   identifier: string;
   login_url?: string | null;
-  favorite?: boolean;
   group_id?: number | null;
   login_via_account_id?: number | null;
   secrets?: AccountSecretsType | null;
@@ -362,8 +391,15 @@ export type NetworkTestResultType = {
  */
 export type ServerStatusType = 'online' | 'offline' | 'paused' | 'pending';
 
-/** 分组白名单固定四项（ServerPayload::GROUPS，决策 D10：与账号库分组同一处理方式，不参与权限） */
-export type ServerGroupType = '家庭' | '公网' | '公司' | '归档';
+/**
+ * 服务器分组名称（refinements-v0.1.2 §3.1 / §3.2）：
+ * 分组改为字典表（server_groups）驱动，名称是任意非空字符串，不再是固定四项联合类型。
+ * 可选值请从 GET /api/servers/groups 拿（store.serverGroupDict）。
+ */
+export type ServerGroupType = string;
+
+/** 服务器分组字典项（GET /api/servers/groups 出参元素） */
+export type ServerGroupItemType = GroupDictItemType;
 
 /** 历史指标范围档位（ServersMetricsController::RANGES，PRD §6；30d 为服务端小时聚合） */
 export type ServerRangeType = '1h' | '6h' | '24h' | '30d';
@@ -483,8 +519,11 @@ export type ServerMetricsSeriesType = {
   total: number;
 };
 
-/** 侧栏分组计数：四项分组恒定出现（为 0 也返回），按搜索命中全集统计，不受分组筛选影响（PRD §5.5） */
-export type ServerGroupCountsType = Partial<Record<ServerGroupType, number>>;
+/**
+ * 侧栏分组计数：键为字典里的全部分组名称（后端按字典输出全部名称，为 0 也返回），
+ * 按搜索命中全集统计，不受分组筛选影响（PRD §5.5 / refinements-v0.1.2 §3.2）。
+ */
+export type ServerGroupCountsType = Record<string, number>;
 
 /**
  * 列表查询参数（GET /api/servers）。
@@ -579,4 +618,9 @@ export type BackupRestoreResultType = {
   removed?: number;
   /** 仅书签：标签维度的新建 / 复用数 */
   tags?: { new: number; same: number };
+  /**
+   * 仅服务器 / 账号库恢复：本次（或将）自动新建的分组数（refinements-v0.1.2 §3.4）。
+   * 预检扁平响应与执行响应同名字段同口径，store 归一化后原样透传。
+   */
+  groups_created?: number;
 };

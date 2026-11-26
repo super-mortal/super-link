@@ -40,6 +40,8 @@ export const API_ENDPOINTS = {
     deleteSkills: `${API_BASE}/skills/delete`,
     tags: `${API_BASE}/skills/tags`,
     checkUpdates: `${API_BASE}/skills/check-updates`,
+    /** 安装任务状态（refinements-v0.1.2 §4.4 方案 B）：GET /api/skills/install/status?task-id= */
+    installStatus: (taskId: number) => `${API_BASE}/skills/install/status?task-id=${taskId}`,
     update: `${API_BASE}/skills/update`,
     exportSkill: (id: number) => `${API_BASE}/skills/export?id=${id}`,
   },
@@ -75,6 +77,16 @@ export const API_ENDPOINTS = {
   setup: {
     setup: `${API_BASE}/setup/database`,
   },
+  /**
+   * 账号分组字典 CRUD（refinements-v0.1.2 §3.2）：列表 / 新增 / 重命名同路径，
+   * 删除走 /delete（POST，与其它资源一致）；id 一律请求体传递。
+   */
+  accountGroups: {
+    list: `${API_BASE}/account-groups`,
+    create: `${API_BASE}/account-groups`,
+    update: `${API_BASE}/account-groups`,
+    delete: `${API_BASE}/account-groups/delete`,
+  },
   /** 服务器监控（PRD docs/prd/server.md §6）：id 一律查询串传递（Router 无路径参数） */
   servers: {
     list: `${API_BASE}/servers`,
@@ -88,6 +100,10 @@ export const API_ENDPOINTS = {
     metrics: (id: number, range: ServerRangeType) => `${API_BASE}/servers/metrics?server-id=${id}&range=${range}`,
     /** POST /api/servers/token：重置 Token，旧 Token 立即失效，响应含明文且 no-store */
     token: (id: number) => `${API_BASE}/servers/token?server-id=${id}`,
+    /** 分组字典 CRUD（refinements-v0.1.2 §3.2）：GET 列表 / POST 新增 / PATCH 重命名共用路径 */
+    groups: `${API_BASE}/servers/groups`,
+    /** POST /api/servers/groups/delete：body { id }，非空分组与最后一个分组会被后端 400 拒绝 */
+    deleteGroup: `${API_BASE}/servers/groups/delete`,
   },
   importBookmarks: {
     pocket: `${API_BASE}/import/pocket`,

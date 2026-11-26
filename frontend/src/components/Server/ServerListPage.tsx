@@ -8,7 +8,7 @@ import { ServerFormDialog } from '@/components/Server/ServerFormDialog.tsx';
 import { ServerToolbar } from '@/components/Server/ServerToolbar.tsx';
 import { Skeleton } from '@/components/ui/skeleton.tsx';
 import { StoreContext } from '@/store/storeContext.ts';
-import { SERVER_GROUPS, SERVER_SORTS, parseServerSort } from '@/lib/serverFormat.ts';
+import { SERVER_SORTS, parseServerSort } from '@/lib/serverFormat.ts';
 
 /**
  * `/servers` 服务器列表页（PRD §5.1 / §5.5，决策 D5）。
@@ -53,8 +53,9 @@ export const ServerListPage = observer(() => {
 
   // 空态三分（与账号库空态优先级同思路）：本身为空 > 搜索无结果 > 分组筛选为空。
   // 「一台都没有」不能靠 store.servers 判断（它已是分组过滤结果），改用侧栏分组计数：
-  // 后端恒定返回四项，四项全 0 才是真的没有服务器
-  const noServersAtAll = SERVER_GROUPS.every((group) => (store.serverGroups[group] ?? 0) === 0);
+  // 后端按字典输出全部分组（为 0 也返回），全部计数为 0 才是真的没有服务器
+  const groupCounts = Object.values(store.serverGroups);
+  const noServersAtAll = groupCounts.every((count) => count === 0);
   const emptyVariant = noServersAtAll ? 'empty' : search.trim() ? 'search' : 'group';
 
   const openServerDetail = (id: number) => navigate(`/servers/${id}`);

@@ -3,7 +3,6 @@ import { toast } from 'sonner';
 import { API_ENDPOINTS } from './api';
 import {
   AccountDetailType,
-  AccountGroupType,
   AccountListParamsType,
   AccountType,
   AuthorizationInputType,
@@ -14,6 +13,7 @@ import {
   BackupRestoreResultType,
   CreateUserType,
   GithubAccessModeType,
+  GroupDictItemType,
   ItemType,
   LoginType,
   ModuleKey,
@@ -33,6 +33,7 @@ import {
   ServerUpdateType,
   ServerWithStatusType,
   SkillDetailType,
+  SkillInstallTaskType,
   SkillType,
   SkillUpdateType,
   TagFilterType,
@@ -108,8 +109,8 @@ class MainStore {
    * 密文只在详情接口按需拉取，解密结果进 vaultSession 内存缓存，不进本 store。
    */
   accounts: AccountType[] = [];
-  /** 分组字典：后端暂无独立分组接口，从账号列表响应的 group_id / group 派生 */
-  accountGroups: AccountGroupType[] = [];
+  /** 账号分组字典：来自服务端 GET /api/account-groups（含每组账号数），不再从账号列表派生 */
+  accountGroups: GroupDictItemType[] = [];
   /** 列表查询总数（后端返回的 total），随 fetchAccounts 更新 */
   accountTotal = 0;
   /** 最近一次拉取的账号详情（含授权关系）；仅内存态，不进 URL / 存储 */
@@ -125,8 +126,10 @@ class MainStore {
   servers: ServerItemType[] = [];
   /** 列表查询总数（后端返回的 total），随 fetchServers 更新 */
   serverTotal = 0;
-  /** 侧栏分组计数：四项分组恒定出现（为 0 也返回），按搜索命中全集统计，不受分组筛选影响 */
+  /** 侧栏分组计数：键为字典里的全部分组名称（为 0 也返回），按搜索命中全集统计，不受分组筛选影响 */
   serverGroups: ServerGroupCountsType = {};
+  /** 服务器分组字典（GET /api/servers/groups，含每组服务器数）：设置页与表单下拉使用 */
+  serverGroupDict: GroupDictItemType[] = [];
   /** 最近一次拉取的服务器详情（含最新 Docker 快照）；仅内存态，不进 URL / 存储 */
   currentServer: ServerDetailType | null = null;
   /** 最近一次历史指标序列（详情页图表用）；仅内存态 */
@@ -714,37 +717,73 @@ class MainStore {
     const accounts = (response?.data?.accounts ?? []) as AccountType[];
     this.setAccounts(accounts);
     this.accountTotal = Number(response?.data?.total ?? accounts.length);
-    this.deriveAccountGroups(accounts);
+    // 分组字典改由服务端字典接口提供（refinements-v0.1.2 §3.2）：随列表静默刷新一次，
+    // 账号库未初始化时后端 409 不弹错误 toast，失败时保留上一次的字典
+    void this.fetchAccountGroups();
 
     return accounts;
   };
 
   /**
-   * 分组字典派生：后端暂无独立的分组列表接口，分组名只能从账号列表响应里拿，
-   * 因此「一个账号都没有的分组」暂时不可见（待后续补充接口）。
+   * 账号分组字典（GET /api/account-groups）。
+   *
+   * 字典由后端 LEFT JOIN 计数，为 0 的分组也会返回（设置页要展示并允许删除）；
+   * 拉取静默（不弹成功 / 失败 toast）：账号库未解锁时后端 409，交给页面自己的锁定态说明。
    */
-  deriveAccountGroups = (accounts: AccountType[]) => {
-    const groups = new Map<number, AccountGroupType>();
+  fetchAccountGroups = async (): Promise<GroupDictItemType[]> => {
+    const response = await this.runRequest(API_ENDPOINTS.accountGroups.list, 'GET', {}, '获取账号分组失败', true, true);
 
-    for (const account of accounts) {
-      const id = account.group_id ?? null;
-      const name = account.group ?? null;
-      if (id === null || id <= 0 || !name) {
-        continue;
-      }
-      groups.set(id, { id, name, sort: 0 });
+    if (response === null) {
+      return this.accountGroups;
     }
 
-    this.accountGroups = [...groups.values()].sort((a, b) => a.name.localeCompare(b.name));
-  };
-
-  /** 分组字典：列表还没加载过时先拉一次全量列表再派生 */
-  fetchAccountGroups = async (): Promise<AccountGroupType[]> => {
-    if (this.accounts.length === 0) {
-      await this.fetchAccounts();
-    }
+    this.accountGroups = (response?.data?.groups ?? []) as GroupDictItemType[];
 
     return this.accountGroups;
+  };
+
+  /** 新增账号分组（POST /api/account-groups）：重名由后端 400，toast 走统一请求层 */
+  createAccountGroup = async (name: string): Promise<boolean> => {
+    const response = await this.runRequest(API_ENDPOINTS.accountGroups.create, 'POST', { name }, '创建账号分组失败');
+
+    if (response === null) {
+      return false;
+    }
+
+    await this.fetchAccountGroups();
+
+    return true;
+  };
+
+  /** 重命名账号分组（PATCH /api/account-groups）：只改字典行，账号按 group_id 关联、无需级联更新 */
+  renameAccountGroup = async (id: number, name: string): Promise<boolean> => {
+    const response = await this.runRequest(
+      API_ENDPOINTS.accountGroups.update,
+      'PATCH',
+      { id, name },
+      '重命名账号分组失败'
+    );
+
+    if (response === null) {
+      return false;
+    }
+
+    await this.fetchAccountGroups();
+
+    return true;
+  };
+
+  /** 删除账号分组（POST /api/account-groups/delete）：非空分组与最后一个分组由后端 400 拦截 */
+  deleteAccountGroup = async (id: number): Promise<boolean> => {
+    const response = await this.runRequest(API_ENDPOINTS.accountGroups.delete, 'POST', { id }, '删除账号分组失败');
+
+    if (response === null) {
+      return false;
+    }
+
+    await this.fetchAccountGroups();
+
+    return true;
   };
 
   /** 账号详情（含授权关系）；密文原样交给调用方解密，本 store 不做任何解密 */
@@ -1094,6 +1133,92 @@ class MainStore {
     };
   };
 
+  /* ----------------------------- 服务器分组字典（refinements-v0.1.2 §3.2） ----------------------------- */
+
+  /**
+   * 服务器分组字典（GET /api/servers/groups）：返回 { id, name, sort, count }[]。
+   * 静默拉取（不弹 toast）——侧栏 / 表单在页面加载时顺带刷新，失败保留上次字典。
+   */
+  fetchServerGroups = async (): Promise<GroupDictItemType[] | null> => {
+    const response = await this.runRequest(API_ENDPOINTS.servers.groups, 'GET', {}, '获取服务器分组失败', true, true);
+
+    if (response === null) {
+      return null;
+    }
+
+    const groups = (response?.data?.groups ?? []) as GroupDictItemType[];
+    this.serverGroupDict = groups;
+
+    return groups;
+  };
+
+  /** 新增服务器分组（POST /api/servers/groups）：重名由后端 400 */
+  createServerGroup = async (name: string): Promise<boolean> => {
+    const response = await this.runRequest(API_ENDPOINTS.servers.groups, 'POST', { name }, '创建服务器分组失败');
+
+    if (response === null) {
+      return false;
+    }
+
+    await this.fetchServerGroups();
+    // 分组计数随字典变化，列表按当前筛选条件刷新一次（与其它服务器写操作一致）
+    await this.fetchServers(this.serverListParams);
+
+    return true;
+  };
+
+  /** 重命名服务器分组（PATCH /api/servers/groups）：后端单事务同步字典与 servers.group_name */
+  renameServerGroup = async (id: number, name: string): Promise<boolean> => {
+    const response = await this.runRequest(API_ENDPOINTS.servers.groups, 'PATCH', { id, name }, '重命名服务器分组失败');
+
+    if (response === null) {
+      return false;
+    }
+
+    await this.fetchServerGroups();
+    // 服务器按名称存分组，重命名后列表里的分组名与计数都要重拉
+    await this.fetchServers(this.serverListParams);
+
+    return true;
+  };
+
+  /** 删除服务器分组（POST /api/servers/groups/delete）：非空分组与最后一个分组由后端 400 拦截 */
+  deleteServerGroup = async (id: number): Promise<boolean> => {
+    const response = await this.runRequest(API_ENDPOINTS.servers.deleteGroup, 'POST', { id }, '删除服务器分组失败');
+
+    if (response === null) {
+      return false;
+    }
+
+    await this.fetchServerGroups();
+    await this.fetchServers(this.serverListParams);
+
+    return true;
+  };
+
+  /**
+   * Skill 安装任务状态（GET /api/skills/install/status?task-id=）。
+   * 安装改为「建任务 + 异步 worker」后，进度轮询走这里（task15 消费）；
+   * 轮询期间失败不弹 toast（skipSuccessMessage / skipErrorMessage 都开），
+   * 由弹窗按最后一次成功响应决定展示，避免网络抖动刷屏。
+   */
+  fetchSkillInstallTask = async (taskId: number): Promise<SkillInstallTaskType | null> => {
+    const response = await this.runRequest(
+      API_ENDPOINTS.skills.installStatus(taskId),
+      'GET',
+      {},
+      '获取 Skill 安装进度失败',
+      true,
+      true
+    );
+
+    if (response === null) {
+      return null;
+    }
+
+    return (response?.data?.task ?? null) as SkillInstallTaskType | null;
+  };
+
   getUser = async (noErrorEmit: boolean = false) => {
     const response = await this.runRequest(
       API_ENDPOINTS.settings.getUser,
@@ -1353,6 +1478,8 @@ class MainStore {
 
     // 预检按 refinements.md §4.5 返回扁平分类（{ new, same, skipped, ... }），
     // 执行返回 { items, summary }。这里统一补成 summary，UI 只认一种形状。
+    // groups_created（服务器 / 账号库恢复自动建组数，refinements-v0.1.2 §3.4）在两种
+    // 响应里都位于顶层，属于 BackupRestoreResultType 的可选字段，原样保留供 task9 展示。
     if (!data.summary) {
       data.summary = {
         new: data.new ?? 0,

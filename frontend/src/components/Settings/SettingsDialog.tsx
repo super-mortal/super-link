@@ -1,5 +1,16 @@
 import * as React from 'react';
-import { ChevronLeft, ChevronRight, Database, Globe, Import, InfoIcon, Keyboard, KeyRound, Share2 } from 'lucide-react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  Database,
+  FolderTree,
+  Globe,
+  Import,
+  InfoIcon,
+  Keyboard,
+  KeyRound,
+  Share2,
+} from 'lucide-react';
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
@@ -8,6 +19,7 @@ import { observer } from 'mobx-react-lite';
 import { SettingsAuth } from './SettingsAuth';
 import { SettingsIntegrations } from './SettingsIntegrations.tsx';
 import { SettingsImport } from './SettingsImport';
+import { SettingsGroups } from './SettingsGroups';
 import { RestoreDialog } from './RestoreDialog';
 import { SettingsBackupSection } from './SettingsBackupSection';
 import { SettingsVault } from './Vault.tsx';
@@ -34,6 +46,14 @@ export const SettingsDialog = observer(() => {
       warningMessage: null,
     },
     { id: 'import', title: '导入', icon: Import, component: <SettingsImport />, warningMessage: null },
+    {
+      // 分组管理统一放设置页（refinements-v0.1.2 §3.3）：位于「导入」与「数据备份」之间
+      id: 'groups',
+      title: '分组',
+      icon: FolderTree,
+      component: <SettingsGroups />,
+      warningMessage: null,
+    },
     {
       id: 'backup',
       title: '数据备份',

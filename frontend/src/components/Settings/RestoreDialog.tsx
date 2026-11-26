@@ -238,6 +238,8 @@ export const RestoreDialog = observer(({ open, onOpenChange, module, onRestored 
       return;
     }
 
+    // 服务器恢复会自动新建字典外分组（refinements-v0.1.2 §3.4），字典与列表计数一起重拉
+    void store.fetchServerGroups();
     void store.fetchServers(store.serverListParams);
   };
 
@@ -494,6 +496,11 @@ export const RestoreDialog = observer(({ open, onOpenChange, module, onRestored 
                       标签：新建 {preview.tags.new} 个，复用 {preview.tags.same} 个。
                     </p>
                   )}
+                  {(preview.groups_created ?? 0) > 0 && (
+                    <p className="text-muted-foreground text-xs">
+                      新增 {preview.groups_created} 个分组（备份里的分组名本地不存在，将自动创建）。
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex flex-col gap-2">
@@ -579,6 +586,12 @@ export const RestoreDialog = observer(({ open, onOpenChange, module, onRestored 
                 <CountList summary={result.summary} />
 
                 <p className="text-muted-foreground text-xs">{detailParts.join(' · ')}</p>
+
+                {(result.groups_created ?? 0) > 0 && (
+                  <p className="text-muted-foreground text-xs">
+                    新增 {result.groups_created} 个分组（备份里的分组名本地不存在，已自动创建）。
+                  </p>
+                )}
 
                 {(result.removed ?? 0) > 0 && (
                   <p className="text-muted-foreground text-xs">已清理备份之外的服务器 {result.removed} 台。</p>

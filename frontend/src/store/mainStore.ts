@@ -1184,6 +1184,8 @@ class MainStore {
 
   /** 删除服务器分组（POST /api/servers/groups/delete）：非空分组与最后一个分组由后端 400 拦截 */
   deleteServerGroup = async (id: number): Promise<boolean> => {
+    // 删除前先记下分组名：若侧栏正筛掉该分组，删除后要回落为全部（否则列表会一直为空）
+    const deletedName = this.serverGroupDict.find((group) => group.id === id)?.name ?? null;
     const response = await this.runRequest(API_ENDPOINTS.servers.deleteGroup, 'POST', { id }, '删除服务器分组失败');
 
     if (response === null) {
@@ -1191,7 +1193,12 @@ class MainStore {
     }
 
     await this.fetchServerGroups();
-    await this.fetchServers(this.serverListParams);
+
+    const nextParams = { ...this.serverListParams };
+    if (deletedName !== null && nextParams.group === deletedName) {
+      delete nextParams.group;
+    }
+    await this.fetchServers(nextParams);
 
     return true;
   };
@@ -1576,15 +1583,22 @@ class MainStore {
    * 与 Skill 上传 / 书签导入同一套上传方式；mode 决定合并（merge）还是覆盖（replace）。
    * 主密码校验不在这里——由调用方先用 lib/vaultBackup.ts 在本地验完再上传。
    * 成功 / 失败提示走后端 message（runRequest 默认行为），调用方只需处理成功后的锁定与刷新。
+   *
+   * 返回本次自动新建的分组数（`groups_created`，refinements-v0.1.2 §3.4，与服务器恢复同口径），
+   * 供导入完成提示展示「新增 N 个分组」；失败返回 null（与 runRequest 的 null 语义一致）。
    */
-  importVault = async (selectedFile: File, mode: VaultImportModeType): Promise<boolean> => {
+  importVault = async (selectedFile: File, mode: VaultImportModeType): Promise<number | null> => {
     const formData = new FormData();
     formData.append('file', selectedFile);
     formData.append('mode', mode);
 
     const response = await this.runRequest(API_ENDPOINTS.vault.import, 'POST', formData, '导入账号库失败');
 
-    return response !== null;
+    if (response === null) {
+      return null;
+    }
+
+    return Number(response?.data?.groups_created ?? 0);
   };
 
   fetchUrlMetadata = async (url: string) => {

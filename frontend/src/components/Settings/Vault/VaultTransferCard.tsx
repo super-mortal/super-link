@@ -88,15 +88,20 @@ export const VaultTransferCard = observer(() => {
         return;
       }
 
-      const ok = await store.importVault(selectedFile, mode);
-      if (!ok) {
+      const groupsCreated = await store.importVault(selectedFile, mode);
+      if (groupsCreated === null) {
         // 后端的拒绝原因（密钥不一致、结构非法等）已由统一请求层 toast 中文提示，这里不重复
         return;
       }
 
       vault.lock();
       await vault.loadMeta();
-      toast.success('导入成功，请重新解锁账号库（覆盖导入请使用备份文件的主密码）', { position: 'top-center' });
+      // 导入会自动新建字典外分组（refinements-v0.1.2 §3.4）：字典同步刷新，提示同口径展示新增数
+      void store.fetchAccountGroups();
+      const groupsNote = groupsCreated > 0 ? `，新增 ${groupsCreated} 个分组` : '';
+      toast.success(`导入成功${groupsNote}，请重新解锁账号库（覆盖导入请使用备份文件的主密码）`, {
+        position: 'top-center',
+      });
       resetImportForm();
     } finally {
       setIsImporting(false);

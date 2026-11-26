@@ -1541,6 +1541,15 @@ class Repository
 	public function createServer(array $data): int
 	{
 		$date = date('Y-m-d H:i:s');
+
+		// 分组缺省取字典中 sort 最小的分组（refinements-v0.1.2 §3.1）：不再硬编码
+		// 具体分组名，设置页改名 / 删除后缺省值自动跟随 server_groups。
+		$group_name = (string)($data['group_name'] ?? '');
+		if ('' === $group_name) {
+			$default_group = $this->getDefaultServerGroup();
+			$group_name = (string)($default_group['name'] ?? '');
+		}
+
 		$stmt = $this->pdo->prepare(
 			'INSERT INTO servers (name, note, group_name, token_hash, token_salt, paused, created_at, updated_at)
 			VALUES (:name, :note, :group_name, :token_hash, :token_salt, :paused, :created_at, :updated_at)'
@@ -1548,9 +1557,8 @@ class Repository
 		$stmt->execute([
 			':name' => (string)($data['name'] ?? ''),
 			':note' => (string)($data['note'] ?? ''),
-			// 分组取值（家庭 / 公网 / 公司 / 归档，PRD D10）由控制器校验，
-			// 这里只做字符串兜底，真正的必填校验在控制器
-			':group_name' => (string)($data['group_name'] ?? '家庭'),
+			// 分组存在性由调用方按字典校验（ServerPayload），这里只兜住缺省值与空串
+			':group_name' => $group_name,
 			':token_hash' => (string)($data['token_hash'] ?? ''),
 			':token_salt' => (string)($data['token_salt'] ?? ''),
 			':paused' => !empty($data['paused']) ? 1 : 0,

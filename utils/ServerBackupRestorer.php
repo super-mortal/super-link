@@ -59,9 +59,10 @@ class ServerBackupRestorer
 	 * 拦截：空文件 / JSON 解析失败 / 缺 module / module 不匹配 / 版本不支持 /
 	 * 缺 servers / 条目缺 name 或 Token 材料。
 	 *
-	 * 条目校验直接复用 ServerPayload::parseCreate()（名称必填与长度上限、备注上限、
-	 * 分组白名单），避免恢复端另写一套规则与新增端点漂移。正常导出的文件必然通过，
-	 * 失败说明文件被改写或来自不兼容版本。
+	 * 条目校验直接复用 ServerPayload::parseCreate()（名称必填与长度上限、备注上限），
+	 * 避免恢复端另写一套规则与新增端点漂移。分组在此不做字典校验（传空名称列表）：
+	 * §3.4 要求恢复时字典外的分组名自动建组，不能在解析阶段就 400。正常导出的文件
+	 * 必然通过，失败说明文件被改写或来自不兼容版本。
 	 */
 	public function parse(string $content): array
 	{
@@ -111,7 +112,8 @@ class ServerBackupRestorer
 			}
 
 			try {
-				$meta = ServerPayload::parseCreate($server);
+				// 空名称列表 = 不校验分组字典：字典外分组按 §3.4 由恢复器自动建组
+				$meta = ServerPayload::parseCreate($server, []);
 			} catch (ValidationException $e) {
 				throw new ValidationException('恢复失败：' . $label . '配置不合法（' . $e->getMessage() . '）', 400);
 			}

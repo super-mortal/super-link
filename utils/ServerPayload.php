@@ -8,9 +8,12 @@ use Framework\Exceptions\ValidationException;
 /**
  * 服务器接口的入参校验与出参格式化（PRD §5.1 / §6）
  *
- * 为什么集中在一个类：列表、新增、更新、删除四个端点共用同一套分组白名单、
+ * 为什么集中在一个类：列表、新增、更新、删除四个端点共用同一套分组字典校验、
  * 字段长度上限与输出结构。分散写在各控制器里，很快就会出现「新增校验了分组、
  * 更新忘了校验」这类不一致。与账号库的 AccountPayload 同一模式。
+ *
+ * 分组候选值来自 server_groups 字典（refinements-v0.1.2 §3.1）：分组可在设置页
+ * 增删改名，本类不再持有固定白名单，名称列表由调用方从仓储取出后传入。
  *
  * 敏感列边界：servers 的 token_hash / token_salt 是服务端凭据材料（PRD §5.6 / D6），
  * formatServer() 只输出白名单字段——即使调用方传入的是 getServerById() 的完整行
@@ -30,14 +33,6 @@ class ServerPayload
 	public const STATUS_OFFLINE = 'offline';
 	public const STATUS_PAUSED = 'paused';
 	public const STATUS_PENDING = 'pending';
-
-	/**
-	 * 分组白名单（PRD §5.1 / 决策 D10：固定四项，与账号库分组同一处理方式，不参与权限）
-	 *
-	 * 写操作传白名单外的值一律 400 拒绝，不静默回落——前端把分组拼错时应当立刻知道，
-	 * 而不是以为保存成功、回头发现服务器跑到了「家庭」分组里。
-	 */
-	public const GROUPS = ['家庭', '公网', '公司', '归档'];
 
 	/** 字段长度上限（与账号库同名字段对齐） */
 	private const MAX_NAME_LENGTH = 190;
@@ -69,14 +64,22 @@ class ServerPayload
 	 *
 	 * 不含 token_hash / token_salt：Token 由控制器经 Utils\ServerToken 生成后单独传入，
 	 * 与「名称 / 备注」这类普通编辑保持隔离（PRD §5.6：Token 轮换是独立流程）。
+	 *
+	 * $group_names 为 server_groups 字典里的分组名称列表（来自
+	 * Repository::getServerGroups()）：传字典外的分组名一律 400，不静默回落。
+	 * 未传分组时 group_name 留空串，由 Repository::createServer() 取 sort 最小的
+	 * 分组补齐——新增接口与备份恢复共用同一套缺省规则，不再硬编码具体分组名。
+	 *
+	 * 传空数组表示不做字典校验，仅允许服务器备份恢复使用：§3.4 要求恢复时遇到
+	 * 字典外的分组名自动建组，校验交给恢复器在写库前完成，不能在解析阶段就 400。
 	 */
-	public static function parseCreate(array $input): array
+	public static function parseCreate(array $input, array $group_names): array
 	{
 		return [
 			'name' => self::requiredText($input, 'name', '服务器名称', self::MAX_NAME_LENGTH),
 			'note' => self::optionalText($input, 'note', '备注', self::MAX_NOTE_LENGTH),
-			// 分组缺省「家庭」：与建表默认值、新增弹窗的预选一致（PRD §5.1）
-			'group_name' => self::parseGroup($input['group'] ?? $input['group_name'] ?? null) ?? '家庭',
+			// 留空串交给 createServer() 取字典中 sort 最小的分组（refinements-v0.1.2 §3.1）
+			'group_name' => self::parseGroup($input['group'] ?? $input['group_name'] ?? null, $group_names) ?? '',
 		];
 	}
 
@@ -86,8 +89,9 @@ class ServerPayload
 	 * 只处理请求里出现的字段：没传的字段（包括 paused）保持原值，
 	 * 否则前端只想改备注就会把分组冲掉、把暂停的服务器恢复。
 	 * paused 显式传 null 视为非法——暂停 / 恢复是二值动作，必须给明确值。
+	 * $group_names 语义同 parseCreate()：字典名称列表，字典外分组 400。
 	 */
-	public static function parsePatch(array $input): array
+	public static function parsePatch(array $input, array $group_names): array
 	{
 		$data = [];
 
@@ -101,10 +105,10 @@ class ServerPayload
 
 		if (array_key_exists('group', $input) || array_key_exists('group_name', $input)) {
 			$raw = array_key_exists('group', $input) ? $input['group'] : $input['group_name'];
-			$group = self::parseGroup($raw);
-			// PATCH 里传空串表示「想清空分组」没有意义（白名单外），直接拒绝而不是回落默认值
+			$group = self::parseGroup($raw, $group_names);
+			// PATCH 里传空串表示「想清空分组」没有意义（分组必须有值），直接拒绝而不是回落默认值
 			if (null === $group) {
-				throw new ValidationException('分组不能为空，仅支持 ' . implode(' / ', self::GROUPS), 400);
+				throw new ValidationException('分组不能为空，请在设置 → 分组中选择一个分组', 400);
 			}
 			$data['group_name'] = $group;
 		}
@@ -117,12 +121,13 @@ class ServerPayload
 	}
 
 	/**
-	 * 解析分组值：仅接受白名单四项，缺省（null / 空串）返回 null 由调用方决定默认行为
+	 * 解析分组值：仅接受 $group_names（字典名称列表）内的名称，缺省返回 null
 	 *
-	 * 写接口用 parseGroup(null) === null 走默认值，白名单外 400；读接口（列表筛选）
-	 * 的白名单外值同样 400——筛选条件拼错时静默返回全量，比报错更容易让人看错数据。
+	 * 写接口用 parseGroup(null) === null 走默认值，字典外 400；读接口（列表筛选）的
+	 * 字典外值同样 400——筛选条件拼错时静默返回全量，比报错更容易让人看错数据。
+	 * 传空数组表示不校验字典，只允许服务器备份恢复使用（§3.4 自动建组）。
 	 */
-	public static function parseGroup($value): ?string
+	public static function parseGroup($value, array $group_names): ?string
 	{
 		// 未传（null）或显式空串都视为「不筛选 / 用默认值」，由调用方决定
 		if (null === $value || (is_string($value) && '' === trim($value))) {
@@ -130,13 +135,13 @@ class ServerPayload
 		}
 
 		if (!is_string($value)) {
-			throw new ValidationException('分组格式不正确，仅支持 ' . implode(' / ', self::GROUPS), 400);
+			throw new ValidationException('分组格式不正确，必须为字符串', 400);
 		}
 
 		$group = trim($value);
 
-		if (!in_array($group, self::GROUPS, true)) {
-			throw new ValidationException('分组仅支持 ' . implode(' / ', self::GROUPS), 400);
+		if ([] !== $group_names && !in_array($group, $group_names, true)) {
+			throw new ValidationException("分组「{$group}」不存在，请先在设置 → 分组中添加", 400);
 		}
 
 		return $group;

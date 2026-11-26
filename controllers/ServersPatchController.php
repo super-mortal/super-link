@@ -37,7 +37,9 @@ class ServersPatchController implements ControllerInterface
 			throw new NotFoundException('服务器不存在');
 		}
 
-		$payload = ServerPayload::parsePatch($input);
+		// 分组候选值来自 server_groups 字典（refinements-v0.1.2 §3.1），字典外 400
+		$group_names = array_column($repository->getServerGroups(), 'name');
+		$payload = ServerPayload::parsePatch($input, $group_names);
 
 		// 空请求直接拒绝：updateServer() 对空字段也会刷新 updated_at，
 		// 放过去会让「用户编辑时间」被一次空请求刷掉，排序失去意义

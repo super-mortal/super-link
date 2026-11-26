@@ -30,7 +30,11 @@ class ServersPostController implements ControllerInterface
 
 		$repository = ServiceContainer::get(Repository::class);
 
-		$payload = ServerPayload::parseCreate($input);
+		// 分组候选值来自 server_groups 字典（refinements-v0.1.2 §3.1）：字典外的
+		// 分组在 parseCreate() 里 400；未传分组时由 Repository::createServer()
+		// 取 sort 最小的分组补齐
+		$group_names = array_column($repository->getServerGroups(), 'name');
+		$payload = ServerPayload::parseCreate($input, $group_names);
 
 		$token = ServerToken::generate();
 		$salt = ServerToken::generateSalt();

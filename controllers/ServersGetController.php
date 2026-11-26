@@ -41,8 +41,10 @@ class ServersGetController implements ControllerInterface
 		$repository = ServiceContainer::get(Repository::class);
 
 		$search = trim((string)($input['search'] ?? ''));
-		// 分组筛选：白名单外的值直接 400（拼错筛选条件时静默返回全量比报错更容易看错数据）
-		$group = ServerPayload::parseGroup($input['group'] ?? $input['group_name'] ?? null);
+		// 分组候选值来自字典（refinements-v0.1.2 §3.1）：不再有固定白名单，
+		// 字典外的筛选值直接 400（拼错筛选条件时静默返回全量比报错更容易看错数据）
+		$group_names = array_column($repository->getServerGroups(), 'name');
+		$group = ServerPayload::parseGroup($input['group'] ?? $input['group_name'] ?? null, $group_names);
 		[$sort, $order] = $this->parseSort($input);
 
 		// 一次取回搜索命中的全量结果：个人级服务器数量（PRD §5.5），分组计数、
@@ -51,8 +53,10 @@ class ServersGetController implements ControllerInterface
 		$rows = $repository->getServers(['search' => $search]);
 
 		// 侧栏分组计数（PRD §5.5）：按搜索命中全集统计，不受当前分组筛选影响——
-		// 点了「公司」之后其他分组的计数仍在，用户才知道筛选之外还有什么
-		$group_counts = array_fill_keys(ServerPayload::GROUPS, 0);
+		// 点了「公司」之后其他分组的计数仍在，用户才知道筛选之外还有什么。
+		// 键集合取自 server_groups 字典：字典内的分组全部返回（为 0 也返回），
+		// 设置页新增的动态分组不会再被静默丢弃
+		$group_counts = array_fill_keys($group_names, 0);
 		foreach ($rows as $row) {
 			$group_name = (string)($row['group_name'] ?? '');
 			if (isset($group_counts[$group_name])) {
@@ -77,7 +81,7 @@ class ServersGetController implements ControllerInterface
 		return success('获取服务器列表成功', [
 			'servers' => $servers,
 			'total' => count($servers),
-			// 四项分组恒定出现（为 0 也返回），前端侧栏不必猜有哪些分组
+			// 字典内分组恒定出现（为 0 也返回），前端侧栏不必猜有哪些分组
 			'groups' => $group_counts,
 		]);
 	}

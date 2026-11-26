@@ -236,46 +236,24 @@ a:hover {
 }
 
 @layer utilities {
+  /* 悬浮显隐语义（0 → 100%）：多选框、表格行内按钮、卡片 / 列表右上角操作按钮共用
+     （refinements.md §4.6）。默认完全隐藏，悬浮所在卡片 / 行、键盘聚焦或下拉展开时显现。 */
   .onhover-visible {
     @apply opacity-0 transition-opacity duration-100;
   }
 
   .onhover-container:hover .onhover-visible,
   .onhover-container:active .onhover-visible,
+  .onhover-container:focus-within .onhover-visible,
   .onhover-visible:hover,
+  .onhover-visible:focus-within,
   .onhover-visible[data-state='open'] {
     @apply opacity-100;
   }
 
+  /* 触屏没有 hover：直接完全显现 */
   @media (any-pointer: coarse) {
     .onhover-visible {
-      @apply opacity-100;
-    }
-  }
-
-  /* 卡片 / 列表右上角操作按钮（refinements.md §3「卡片悬浮操作」）：
-     默认 45% 不透明度保持可见，悬浮所在卡片 / 行后完全显现、文字加深为前景色并加轻阴影。
-     与 `.onhover-visible`（0 → 100%）是两套语义：多选框、表格行内按钮继续用后者，
-     不要合并成一个类，否则这些元素会从「完全隐藏」变成「半可见」。 */
-  .onhover-actions {
-    opacity: 0.45;
-    transition:
-      opacity 150ms ease,
-      color 150ms ease,
-      background-color 150ms ease,
-      box-shadow 150ms ease;
-  }
-
-  .onhover-container:hover .onhover-actions,
-  .onhover-container:active .onhover-actions,
-  .onhover-actions:hover,
-  .onhover-actions[data-state='open'] {
-    @apply text-foreground opacity-100 shadow-sm;
-  }
-
-  /* 触屏没有 hover：直接完全显现（与 `.onhover-visible` 的粗指针兜底保持一致） */
-  @media (any-pointer: coarse) {
-    .onhover-actions {
       @apply opacity-100;
     }
   }

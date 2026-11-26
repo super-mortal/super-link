@@ -1045,9 +1045,23 @@ class MainStore {
    * id 走查询串（框架会把 $_GET 合并进入参），字段走请求体。
    * 成功后按当前查询条件刷新列表：暂停 / 恢复会改变状态判定与排序位置，
    * 与账号库 updateAccount 同一处理方式。
+   *
+   * options.silent：跳过通用成功 toast（runRequest 的 skipSuccessMessage）。暂停 / 恢复
+   * 专用——状态已由按钮文案、状态徽章与提示条三处表达，再弹顶部 toast 会遮挡详情页头部
+   * （refinements §4.2）；失败 toast 不受影响。
    */
-  updateServer = async (id: number, payload: ServerUpdateType): Promise<boolean> => {
-    const response = await this.runRequest(API_ENDPOINTS.servers.update(id), 'PATCH', payload, '更新服务器失败');
+  updateServer = async (
+    id: number,
+    payload: ServerUpdateType,
+    options: { silent?: boolean } = {}
+  ): Promise<boolean> => {
+    const response = await this.runRequest(
+      API_ENDPOINTS.servers.update(id),
+      'PATCH',
+      payload,
+      '更新服务器失败',
+      options.silent === true
+    );
 
     if (response === null) {
       return false;

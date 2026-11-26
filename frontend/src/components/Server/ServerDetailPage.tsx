@@ -1,6 +1,5 @@
 import { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
-import { toast } from 'sonner';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Server } from 'lucide-react';
 import { Button } from '@/components/ui/button.tsx';
@@ -67,12 +66,14 @@ export const ServerDetailPage = observer(() => {
    * 「曾加载成功」：range 切换会重跑轮询 effect，局部变量会把它误判为首次失败而停轮询。
    */
   const everLoadedRef = useRef(false);
+  /** 列表卡片「查看接入指引 →」的滚动目标（外层 div，带锚点 id `server-install-card`） */
+  const installCardRef = useRef<HTMLDivElement>(null);
 
   /**
    * 四个操作的挂载（task15）：编辑 / 重置 Token / 删除各自打开弹窗，暂停 / 恢复是直接
-   * 动作（原型即直接切换 + toast，无二次确认）。store 侧已就绪：updateServer（名称 /
-   * 备注 / 分组 / paused）、resetServerToken（旧 Token 立即失效、新明文仅此次返回）、
-   * deleteServer（级联删历史数据）。
+   * 动作（原型即直接切换 + 无二次确认，且不弹 toast，见 refinements §4.2）。store 侧已就绪：
+   * updateServer（名称 / 备注 / 分组 / paused）、resetServerToken（旧 Token 立即失效、
+   * 新明文仅此次返回）、deleteServer（级联删历史数据）。
    */
   const [editOpen, setEditOpen] = useState(false);
   /** 暂停 / 恢复无弹窗：pauseOpen 兼任「进行中」守卫，防止连点产生并发 PATCH */
@@ -100,14 +101,13 @@ export const ServerDetailPage = observer(() => {
 
     try {
       const nextPaused = !detail.server.paused;
-      const ok = await store.updateServer(detail.server.id, { paused: nextPaused });
+      // silent：暂停 / 恢复的状态已由按钮文案、状态徽章与提示条三处表达，通用成功 toast 会
+      // 遮挡页面头部（refinements §4.2），故跳过；失败提示不受影响
+      const ok = await store.updateServer(detail.server.id, { paused: nextPaused }, { silent: true });
       // 失败保持原状：store 已按后端 message toast
       if (!ok) {
         return;
       }
-      toast.success(nextPaused ? `已暂停「${detail.server.name}」的监控` : `已恢复「${detail.server.name}」的监控`, {
-        position: 'top-center',
-      });
       reloadDetail();
     } finally {
       setPauseOpen(false);
@@ -227,6 +227,23 @@ export const ServerDetailPage = observer(() => {
     // detailReloadKey 变化 = 写操作后手动刷新：立即重拉一次并重启轮询
   }, [store, serverID, validID, range, detailReloadKey]);
 
+  /**
+   * 列表卡片「查看接入指引 →」跳转（refinements §4.1）：路由 state 标记 focusInstall，
+   * 详情首次落地后（effect 在提交后执行，此时布局已完成）把接入信息卡滚进视口；
+   * 随即 replace 清掉 state，避免 30s 轮询重渲染或再次进入时重复滚动。
+   */
+  useEffect(() => {
+    if (!detail) {
+      return;
+    }
+    if (!(location.state as { focusInstall?: boolean } | null)?.focusInstall) {
+      return;
+    }
+
+    installCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    navigate(location.pathname, { replace: true, state: null });
+  }, [detail, location.pathname, location.state, navigate]);
+
   const backButton = (
     <div className="flex items-center gap-2">
       <SidebarToggler />
@@ -323,7 +340,11 @@ export const ServerDetailPage = observer(() => {
 
                 <div className="flex flex-col gap-4">
                   <ServerBasicInfoCard server={detail.server} hubVersion={store.appInfo?.installed_version ?? null} />
-                  <ServerInstallCard />
+                  {/* 接入信息卡：外层 div 提供滚动锚点（列表卡片「查看接入指引 →」跳转目标，
+                      refinements §4.1）；scroll-mt 避免滚动后卡片顶边贴死容器 */}
+                  <div ref={installCardRef} id="server-install-card" className="scroll-mt-4">
+                    <ServerInstallCard />
+                  </div>
                 </div>
               </div>
             </>

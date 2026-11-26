@@ -60,6 +60,13 @@ export const ServerListPage = observer(() => {
 
   const openServerDetail = (id: number) => navigate(`/servers/${id}`);
 
+  /**
+   * 卡片占位块「查看接入指引 →」：带路由 state 打开详情页，详情页加载完成后把接入信息卡
+   * 滚进视口（refinements §4.1）。走 state 而不是 URL hash，避免地址栏多出锚点、也不与
+   * 详情页的 range 等页面态混在一起。
+   */
+  const openServerInstallGuide = (id: number) => navigate(`/servers/${id}`, { state: { focusInstall: true } });
+
   const toolbar = (
     <ServerToolbar
       search={search}
@@ -93,7 +100,12 @@ export const ServerListPage = observer(() => {
           {servers.length > 0 ? (
             <div className="grid grid-cols-[repeat(auto-fill,minmax(19rem,1fr))] gap-4 p-4">
               {servers.map((server) => (
-                <ServerCard key={server.id} server={server} onOpen={openServerDetail} />
+                <ServerCard
+                  key={server.id}
+                  server={server}
+                  onOpen={openServerDetail}
+                  onOpenInstall={openServerInstallGuide}
+                />
               ))}
             </div>
           ) : (

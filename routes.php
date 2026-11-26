@@ -66,6 +66,11 @@ use Controllers\TagsDeleteController;
 use Controllers\TagsUpdateColorController;
 use Controllers\TagsUpdateController;
 use Controllers\TagsUpdatePinnedController;
+use Controllers\TodosClearDoneController;
+use Controllers\TodosDeleteController;
+use Controllers\TodosGetController;
+use Controllers\TodosPatchController;
+use Controllers\TodosPostController;
 use Controllers\UrlMetadataController;
 use Controllers\UserCreateController;
 use Controllers\UserDeleteController;
@@ -150,6 +155,23 @@ return [
 			],
 			'update-color' => [
 				'PATCH' => TagsUpdateColorController::class,
+			],
+		],
+		// 待办（PRD docs/prd/todo.md §6.2）：普通用户态模块，沿用会话认证 +
+		// 写操作 CSRF 校验，不加入任何认证 / CSRF / migrate / session 跳过名单。
+		// 列表 / 新增 / 切换完成挂在 /api/todos，删除与清空已完成各占子路径
+		// （Router 无路径参数，id 一律走请求体）
+		'todos' => [
+			'/' => [
+				'GET' => TodosGetController::class,
+				'POST' => TodosPostController::class,
+				'PATCH' => TodosPatchController::class,
+			],
+			'delete' => [
+				'POST' => TodosDeleteController::class,
+			],
+			'clear-done' => [
+				'POST' => TodosClearDoneController::class,
 			],
 		],
 		'settings' => [

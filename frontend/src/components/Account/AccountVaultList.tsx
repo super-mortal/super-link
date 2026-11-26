@@ -24,7 +24,6 @@ import {
 import { Button } from '@/components/ui/button.tsx';
 import { VaultToolbar } from '@/components/Account/VaultToolbar.tsx';
 import { AccountEmptyState } from '@/components/Account/AccountEmptyState.tsx';
-import { AccountGroupFilter } from '@/components/Account/AccountGroupFilter.tsx';
 import { AccountList } from '@/components/Account/Layouts/AccountList.tsx';
 import { AccountCards } from '@/components/Account/Layouts/AccountCards.tsx';
 import { AccountTable } from '@/components/Account/Layouts/AccountTable.tsx';
@@ -51,7 +50,7 @@ import Loading from '@/layouts/Loading.tsx';
  *
  * 与书签 / Skill 的 `ModuleList` 共用同一套外壳控件（视图 / 搜索 / 排序 / 分页 /
  * 批量操作条）与列集合，差异只在数据来源与查询方式：
- * - 账号数据走 `mainStore.accounts`，搜索 / 平台 / 分组 / 排序由服务端处理
+ * - 账号数据走 `mainStore.accounts`，搜索 / 平台 / 排序由服务端处理
  *   （密文字段服务端不可搜，PRD §9.5），筛选条件变化即重新 `fetchAccounts`；
  * - 分页仍在前端做：不传 page / per-page，后端返回全量过滤结果（与 Skill 列表一致）；
  * - 排序态只是 URL 的镜像——服务端已排序，这里不挂 `getSortedRowModel`，
@@ -65,7 +64,7 @@ export const AccountVaultList = observer(() => {
   const defaultSortOption = sortOptions.find((option) => option.key === moduleConfig.defaultSort) ?? sortOptions[0];
 
   const { searchParams, setUrlState } = useUrlState();
-  const { platform, group, setPlatformFilter } = useAccountListState();
+  const { platform, setPlatformFilter } = useAccountListState();
 
   // URL 是筛选条件的唯一来源（与 ModuleList 同构）
   const { pageIndexParam, pageSizeParam, sortByParam, isSortOrderDescParam, searchKeywordParam } = useMemo(() => {
@@ -234,7 +233,6 @@ export const AccountVaultList = observer(() => {
       await store.fetchAccounts({
         search: searchKeywordParam,
         platform,
-        group,
         sort: sortByParam,
         order: isSortOrderDescParam ? 'desc' : 'asc',
       });
@@ -242,7 +240,7 @@ export const AccountVaultList = observer(() => {
     };
 
     void load();
-  }, [store, searchKeywordParam, platform, group, sortByParam, isSortOrderDescParam]);
+  }, [store, searchKeywordParam, platform, sortByParam, isSortOrderDescParam]);
 
   // 布局切换时按对应 key 读取字段可见性：column-visibility-accounts-<layout>
   useEffect(() => {
@@ -290,7 +288,7 @@ export const AccountVaultList = observer(() => {
     startTransition(() => {
       table.resetRowSelection();
     });
-  }, [globalFilter, sorting, pagination, searchKeywordParam, platform, group, table]);
+  }, [globalFilter, sorting, pagination, searchKeywordParam, platform, table]);
 
   useEffect(() => {
     if (table.getState().pagination.pageIndex >= table.getPageCount()) {
@@ -376,7 +374,6 @@ export const AccountVaultList = observer(() => {
               </DropdownMenu>
               <Search table={table} globalFilter={globalFilter} />
               <Sorter sorts={sortOptions} selectedSort={selectedSortKey} onChange={updateSorting} />
-              <AccountGroupFilter />
             </>
           }
         />

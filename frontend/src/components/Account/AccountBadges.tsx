@@ -1,8 +1,8 @@
-import { AlertTriangle, Lock, ShieldCheck, ShieldOff } from 'lucide-react';
+import { AlertTriangle, FolderTree, Lock, ShieldCheck, ShieldOff } from 'lucide-react';
 import { cn } from '@/lib/utils.ts';
 import type { AccountAuthorizationStatusType } from '@/lib/types.ts';
 
-/** 平台徽章：卡片标题行、列表标题行、表格「平台」列共用 */
+/** 平台徽章：卡片徽章行、列表标题行、表格「平台」列共用 */
 export const PlatformBadge = ({ platform, className }: { platform: string; className?: string }) => (
   <span
     className={cn(
@@ -12,6 +12,22 @@ export const PlatformBadge = ({ platform, className }: { platform: string; class
     title={platform}
   >
     <span className="truncate">{platform}</span>
+  </span>
+);
+
+/**
+ * 分组徽章（refinements-v0.1.2 §4.7）：卡片徽章行与平台 / 2FA 同排。
+ *
+ * 分组字典在设置页维护，卡片只做展示；未分组显示「未分组」，
+ * 与详情页头部 `account.group ?? '未分组'` 的兜底口径保持一致。
+ */
+export const GroupBadge = ({ group }: { group?: string | null }) => (
+  <span
+    className="bg-secondary text-secondary-foreground inline-flex max-w-40 min-w-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium"
+    title={group ?? '未分组'}
+  >
+    <FolderTree className="h-3 w-3 shrink-0" aria-hidden="true" />
+    <span className="truncate">{group ?? '未分组'}</span>
   </span>
 );
 

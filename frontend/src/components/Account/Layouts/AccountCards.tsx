@@ -6,7 +6,7 @@ import { ModuleCardActions, useModuleItemOpen } from '@/components/Table/Fields/
 import { formatCardDate } from '@/components/Table/Fields/moduleItem.ts';
 import type { ModuleLayoutProps } from '@/components/Table/Layouts/layoutTypes.ts';
 import { CredentialRow } from '@/components/Account/CredentialRow.tsx';
-import { EncryptedNotesHint, PlatformBadge, TotpBadge } from '@/components/Account/AccountBadges.tsx';
+import { EncryptedNotesHint, GroupBadge, PlatformBadge, TotpBadge } from '@/components/Account/AccountBadges.tsx';
 import { AccountAvatar } from '@/components/Account/AccountAvatar.tsx';
 import { useAccountSecretActions } from '@/hooks/useAccountSecretActions.ts';
 import type { AccountType } from '@/lib/types.ts';
@@ -15,8 +15,9 @@ import type { AccountType } from '@/lib/types.ts';
  * 账号库卡片布局（PRD §9.3 / §9.4）。
  *
  * 与书签 `CardsLayout` 共用同一套骨架（复选框左上、操作按钮右上、底部元信息），
- * 账号差异点：标题行不换行、平台徽章固定右上角、「账号标识 + 密码」合并行、
- * 底部展示更新时间与 2FA 状态。每个区块由 `visibleFields` 门控。
+ * 账号差异点：标题行不换行且只留账号名、「账号标识 + 密码」合并行、
+ * 平台 / 2FA / 分组徽章统一放在徽章行（refinements-v0.1.2 §4.7），
+ * 底部展示更新时间。每个区块由 `visibleFields` 门控。
  * O-13：标题 / 平台区与备注区各固定 3rem 槽位，底栏固定 1.75rem 并 mt-auto 贴底；
  * 字段可见但内容为空时保留空槽，用户主动隐藏字段时对应槽位收缩（与书签卡片同一原则）。
  */
@@ -64,17 +65,15 @@ export const AccountCards = ({ rows, visibleFields }: ModuleLayoutProps) => {
               <ModuleCardActions module="accounts" item={account} />
             </div>
 
-            {/* 标题行不换行：标题可省略并透出 title，平台徽章 margin-left:auto 固定在右上角（PRD §9.4）；
+            {/* 标题行不换行：只留账号名，右上角交给操作按钮（refinements-v0.1.2 §4.7）；
                 O-8：与书签/Skill 卡片一致，右移 12px（pl-3）避让左上多选框留约 4px 净空、下移 2px（pt-0.5）视觉找齐。
-                 O-13：标题 + 平台区固定 3rem 槽位（min-h-12）；标题 flex: 0 1 auto 可压缩省略，
-                平台徽章 flex-none 不参与压缩，不会被长标题挤出行外。
-                头像（refinements.md §3）跟随平台字段可见性，与平台徽章同进同退 */}
+                O-13：标题区固定 3rem 槽位（min-h-12）；标题 flex: 0 1 auto 可压缩省略。
+                头像（refinements.md §3）跟随平台字段可见性 */}
             <div className="flex min-h-12 flex-nowrap items-center gap-1.5 pt-0.5 pr-20 pl-3">
               {showPlatform && <AccountAvatar platform={account.platform} />}
               <h4 className="min-w-0 flex-[0_1_auto] truncate font-semibold tracking-tight" title={account.name}>
                 {account.name}
               </h4>
-              {showPlatform && <PlatformBadge platform={account.platform} className="ml-auto flex-none" />}
             </div>
 
             {(showIdentifier || showPassword) && (
@@ -88,17 +87,24 @@ export const AccountCards = ({ rows, visibleFields }: ModuleLayoutProps) => {
               />
             )}
 
+            {/* 徽章行（refinements-v0.1.2 §4.7）：平台 / 2FA / 分组与其它元信息同排，
+                右上角只留给操作按钮；平台与 2FA 仍按字段可见性门控，分组只有展示没有字段开关 */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              {showPlatform && <PlatformBadge platform={account.platform} />}
+              {showTotp && <TotpBadge enabled={Boolean(account.secrets?.totp)} />}
+              <GroupBadge group={account.group} />
+            </div>
+
             {/* O-13：备注区固定 3rem 槽位（min-h-12），notes 字段可见即占位（无备注也保留空槽），
                 用户主动隐藏字段时整槽收缩；备注是密文字段，卡片态只提示已加密，不渲染占位明文 */}
             {visible.has('notes') && <div className="min-h-12">{hasNotes && <EncryptedNotesHint />}</div>}
 
-            {/* 卡片底部：更新时间 + 2FA 状态（PRD §9.4）；
+            {/* 卡片底部：更新时间（2FA 已移到上方徽章行，不再重复）；
                 O-13：底栏固定 1.75rem 槽位（min-h-7）并 mt-auto 贴卡片底部 */}
-            <div className="text-muted-foreground mt-auto flex min-h-7 items-center justify-between gap-3 border-t pt-2 text-[11px]">
+            <div className="text-muted-foreground mt-auto flex min-h-7 items-center gap-3 border-t pt-2 text-[11px]">
               <span>
                 {moduleConfig.dateLabel}：{formatCardDate(moduleConfig.dateOf(account))}
               </span>
-              {showTotp && <TotpBadge enabled={Boolean(account.secrets?.totp)} />}
             </div>
           </div>
         );

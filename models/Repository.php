@@ -597,6 +597,120 @@ class Repository
 	}
 
 	/**
+	 * 账号分组列表（含每组账号数量，refinements-v0.1.2 §3.1）
+	 *
+	 * 与 getAccountGroups() 分开：后者被账号列表 / 导出复用，只读 id 与 name；
+	 * 这里多算一次 count，供设置页「分组」卡片展示与删除前拦截使用。
+	 * 用 LEFT JOIN + GROUP BY 而不是相关子查询，分组数量个位数时成本可忽略。
+	 */
+	public function getAccountGroupsWithCounts(): array
+	{
+		$stmt = $this->pdo->query(
+			'SELECT g.id, g.name, g.sort, COUNT(a.id) AS "count"
+			FROM account_groups g
+			LEFT JOIN accounts a ON a.group_id = g.id
+			GROUP BY g.id, g.name, g.sort
+			ORDER BY g.sort ASC, g.id ASC'
+		);
+		$groups = $stmt->fetchAll(PDO::FETCH_ASSOC);
+		foreach ($groups as &$group) {
+			$group['id'] = (int)$group['id'];
+			$group['sort'] = (int)$group['sort'];
+			$group['count'] = (int)$group['count'];
+		}
+		unset($group);
+
+		return $groups;
+	}
+
+	/**
+	 * 按名称查账号分组（重名校验用）
+	 *
+	 * name 有 UNIQUE 约束，正常只会返回一行；控制器据返回值判断「已存在」并返回 400。
+	 */
+	public function getAccountGroupByName(string $name)
+	{
+		$stmt = $this->pdo->prepare('SELECT * FROM account_groups WHERE name = :name');
+		$stmt->execute([':name' => $name]);
+		return $stmt->fetch(PDO::FETCH_ASSOC);
+	}
+
+	/**
+	 * 新增账号分组，返回新 id
+	 *
+	 * sort 取 MAX(sort) + 1 追加到末尾：种子分组是 1~4，若依赖建表默认值 0，
+	 * 新分组会插到「个人」之前，用户看到的顺序就乱了。
+	 * 重名由 name 的 UNIQUE 约束兜底：控制器应先经 getAccountGroupByName() 判重
+	 * 并返回中文 400，这里的约束只防并发竞态（冲突时 PDO 抛异常）。
+	 */
+	public function createAccountGroup(string $name): int
+	{
+		$stmt = $this->pdo->prepare(
+			'INSERT INTO account_groups (name, sort)
+			VALUES (:name, COALESCE((SELECT MAX(sort) FROM account_groups), 0) + 1)'
+		);
+		$stmt->execute([':name' => $name]);
+		return (int)$this->pdo->lastInsertId();
+	}
+
+	/**
+	 * 重命名账号分组（refinements-v0.1.2 §3.1）
+	 *
+	 * 只改字典行：accounts.group_id 是按 id 关联的，名称变化不需要级联更新，
+	 * 与服务器分组（servers 按名称存分组）的处理方式不同。
+	 * 返回 true 仅代表语句执行成功；分组是否存在由控制器先用 getAccountGroupById() 判断。
+	 */
+	public function renameAccountGroup(int $id, string $name): bool
+	{
+		$stmt = $this->pdo->prepare('UPDATE account_groups SET name = :name WHERE id = :id');
+		return $stmt->execute([':name' => $name, ':id' => $id]);
+	}
+
+	/**
+	 * 删除账号分组（空分组才允许，非空由控制器拦截）
+	 *
+	 * 本项目连接未开启 PRAGMA foreign_keys，accounts 建表声明的
+	 * ON DELETE SET NULL 实际不会触发，所以删除前必须用 countAccountsInGroup()
+	 * 在应用层计数并拒绝非空分组（refinements-v0.1.2 §3.1）。
+	 * 返回是否真的删掉了行，便于控制器区分 404。
+	 */
+	public function deleteAccountGroup(int $id): bool
+	{
+		$stmt = $this->pdo->prepare('DELETE FROM account_groups WHERE id = :id');
+		$stmt->execute([':id' => $id]);
+		return $stmt->rowCount() > 0;
+	}
+
+	/**
+	 * 统计某账号分组下的账号数量（删除前拦截用）
+	 */
+	public function countAccountsInGroup(int $group_id): int
+	{
+		$stmt = $this->pdo->prepare('SELECT COUNT(*) FROM accounts WHERE group_id = :group_id');
+		$stmt->execute([':group_id' => $group_id]);
+		return (int)$stmt->fetchColumn();
+	}
+
+	/**
+	 * 取默认账号分组（sort 最小，其次 id 最小）
+	 *
+	 * 字典为空理论不会发生（迁移总会补种子），返回 false 让调用方自行兜底。
+	 */
+	public function getDefaultAccountGroup()
+	{
+		$stmt = $this->pdo->query('SELECT id, name, sort FROM account_groups ORDER BY sort ASC, id ASC LIMIT 1');
+		return $stmt->fetch(PDO::FETCH_ASSOC);
+	}
+
+	/**
+	 * 账号分组总数（「至少保留一个分组」的守卫依据，拦截逻辑留在控制器）
+	 */
+	public function countAccountGroups(): int
+	{
+		return (int)$this->pdo->query('SELECT COUNT(*) FROM account_groups')->fetchColumn();
+	}
+
+	/**
 	 * 账号列表查询（PRD §8.2 / §8.3）
 	 *
 	 * 返回 ['total' => 过滤后总数, 'accounts' => 行列表]。total 是分页前的数量，
@@ -1146,6 +1260,160 @@ class Repository
 			'totpEnabled' => $totp_enabled,
 			'platformCount' => $platform_count,
 		];
+	}
+
+	/**
+	 * 服务器分组字典列表（含每组服务器数量，refinements-v0.1.2 §3.1）
+	 *
+	 * servers.group_name 仍按名称存文本、不改成外键（备份按名称导出、agent 协议、
+	 * 老库都零改动），字典只做候选值来源与重命名时的同步对象。
+	 * count 由 LEFT JOIN servers 统计同名行：为 0 的分组也要返回，设置页需要展示
+	 * 并允许删除；排序 sort ASC, id ASC —— 种子与回填共用 sort=100，
+	 * 靠自增 id 保证「种子在前、后补的分组在后」的稳定顺序。
+	 */
+	public function getServerGroups(): array
+	{
+		$stmt = $this->pdo->query(
+			'SELECT g.id, g.name, g.sort, COUNT(s.id) AS "count"
+			FROM server_groups g
+			LEFT JOIN servers s ON s.group_name = g.name
+			GROUP BY g.id, g.name, g.sort
+			ORDER BY g.sort ASC, g.id ASC'
+		);
+		$groups = $stmt->fetchAll(PDO::FETCH_ASSOC);
+		foreach ($groups as &$group) {
+			$group['id'] = (int)$group['id'];
+			$group['sort'] = (int)$group['sort'];
+			$group['count'] = (int)$group['count'];
+		}
+		unset($group);
+
+		return $groups;
+	}
+
+	/**
+	 * 按 id 查服务器分组（重命名 / 删除的存在性判断）
+	 */
+	public function getServerGroupById(int $id)
+	{
+		$stmt = $this->pdo->prepare('SELECT id, name, sort FROM server_groups WHERE id = :id');
+		$stmt->execute([':id' => $id]);
+		return $stmt->fetch(PDO::FETCH_ASSOC);
+	}
+
+	/**
+	 * 按名称查服务器分组（重名校验用）
+	 */
+	public function getServerGroupByName(string $name)
+	{
+		$stmt = $this->pdo->prepare('SELECT id, name, sort FROM server_groups WHERE name = :name');
+		$stmt->execute([':name' => $name]);
+		return $stmt->fetch(PDO::FETCH_ASSOC);
+	}
+
+	/**
+	 * 新增服务器分组，返回新 id
+	 *
+	 * sort 取 MAX(sort) + 1 追加到末尾：种子与回填值统一是 100，若依赖建表默认值
+	 * 100，新分组会与种子混在 id 序里，MAX+1 让后加的分组永远排在最后。
+	 * 重名由 name 的 UNIQUE 约束兜底：控制器应先经 getServerGroupByName() 判重，
+	 * 这里的约束只防并发竞态（冲突时 PDO 抛异常）。
+	 */
+	public function createServerGroup(string $name): int
+	{
+		$stmt = $this->pdo->prepare(
+			'INSERT INTO server_groups (name, sort)
+			VALUES (:name, COALESCE((SELECT MAX(sort) FROM server_groups), 0) + 1)'
+		);
+		$stmt->execute([':name' => $name]);
+		return (int)$this->pdo->lastInsertId();
+	}
+
+	/**
+	 * 重命名服务器分组（refinements-v0.1.2 §3.1）
+	 *
+	 * 单事务内「改字典行 + 按旧名称更新 servers.group_name」，避免出现字典是新名、
+	 * 服务器还是旧名的中间态（列表分组筛选与计数会同时错位）。
+	 * 事务嵌套：与 deleteServer() 同套路，只在没有活跃事务时自行开启 / 提交，
+	 * 已被外层事务包裹时交给外层收尾（PDO 嵌套 beginTransaction 会抛异常）。
+	 * $name 由控制器先判重（重名 400）；UNIQUE 约束仍作为并发兜底，异常向上抛
+	 * 由框架统一转成错误响应。
+	 */
+	public function renameServerGroup(int $id, string $name): bool
+	{
+		$group = $this->getServerGroupById($id);
+		if (!$group) {
+			return false;
+		}
+
+		$owns_transaction = !$this->pdo->inTransaction();
+		if ($owns_transaction) {
+			$this->pdo->beginTransaction();
+		}
+
+		try {
+			$stmt = $this->pdo->prepare('UPDATE server_groups SET name = :name WHERE id = :id');
+			$stmt->execute([':name' => $name, ':id' => $id]);
+
+			$stmt = $this->pdo->prepare('UPDATE servers SET group_name = :name WHERE group_name = :old_name');
+			$stmt->execute([':name' => $name, ':old_name' => (string)$group['name']]);
+
+			if ($owns_transaction) {
+				$this->pdo->commit();
+			}
+			return true;
+		} catch (Exception $e) {
+			if ($owns_transaction && $this->pdo->inTransaction()) {
+				$this->pdo->rollBack();
+			}
+			throw $e;
+		}
+	}
+
+	/**
+	 * 删除服务器分组（空分组才允许，非空由控制器拦截）
+	 *
+	 * 删除前必须用 countServersInGroup() 计数并拒绝非空分组
+	 * （refinements-v0.1.2 §3.1：提示「分组「x」下还有 N 台服务器」）。
+	 * 返回是否真的删掉了行，便于控制器区分 404。
+	 */
+	public function deleteServerGroup(int $id): bool
+	{
+		$stmt = $this->pdo->prepare('DELETE FROM server_groups WHERE id = :id');
+		$stmt->execute([':id' => $id]);
+		return $stmt->rowCount() > 0;
+	}
+
+	/**
+	 * 统计某服务器分组下的服务器数量（删除前拦截用）
+	 *
+	 * servers 按名称存分组，所以按 group_name 等值计数。
+	 */
+	public function countServersInGroup(string $group_name): int
+	{
+		$stmt = $this->pdo->prepare('SELECT COUNT(*) FROM servers WHERE group_name = :group_name');
+		$stmt->execute([':group_name' => $group_name]);
+		return (int)$stmt->fetchColumn();
+	}
+
+	/**
+	 * 取默认服务器分组（sort 最小，其次 id 最小）
+	 *
+	 * 新增服务器未指定分组时的缺省值（refinements-v0.1.2 §3.1）。
+	 * 字典为空理论不会发生（迁移总会补种子），返回 false 让调用方自行兜底。
+	 */
+	public function getDefaultServerGroup()
+	{
+		$stmt = $this->pdo->query('SELECT id, name, sort FROM server_groups ORDER BY sort ASC, id ASC LIMIT 1');
+		return $stmt->fetch(PDO::FETCH_ASSOC);
+	}
+
+	/**
+	 * 服务器分组总数（「至少保留一个分组」的守卫依据，拦截逻辑留在控制器）
+	 */
+	public function countServerGroups(): int
+	{
+		return (int)$this->pdo->query('SELECT COUNT(*) FROM server_groups')->fetchColumn();
 	}
 
 	/**
@@ -2311,6 +2579,16 @@ class Repository
 				return false;
 			}
 
+			// 服务器分组字典（refinements-v0.1.2 §3.1）：建表 + 种子 + 存量回填。
+			// servers.group_name 保持文本，本表只做候选值字典与重命名同步来源
+			if (!$this->setupServerGroupsTable()) {
+				return false;
+			}
+
+			if (!$this->backfillServerGroups()) {
+				return false;
+			}
+
 			// 设置表（PRD O-5）：与 migrate() 共用同一建表方法，新旧库一致
 			if (!$this->setupAppSettingsTable()) {
 				return false;
@@ -2392,6 +2670,23 @@ class Repository
 
 		if (!$this->createServerIndexes()) {
 			throw new Exception('Failed to create indexes for server tables');
+		}
+
+		// 服务器分组字典（refinements-v0.1.2 §3.1）：老库在这里建表并补种子。
+		// 种子只在空表时写入——分组删除功能上线后，被用户删掉的种子分组不能被
+		// 下一次 migrate 复活；回填每次都跑，只补 servers 里实际存在、字典缺的名称
+		if (!$this->checkServerGroupsTableExists() && !$this->setupServerGroupsTable()) {
+			throw new Exception('Failed to set up server_groups table');
+		}
+
+		// 兜底「表已存在但种子缺失」（如首次建表后种子写入失败）的库；
+		// seedServerGroups() 自带空表守卫，非空表不会重新插入被删掉的分组
+		if (!$this->seedServerGroups()) {
+			throw new Exception('Failed to seed server groups');
+		}
+
+		if (!$this->backfillServerGroups()) {
+			throw new Exception('Failed to backfill server groups');
 		}
 
 		// 标签模块隔离（PRD O-9）：补 module 列、迁移历史数据、更换唯一索引，每一步都幂等
@@ -2892,13 +3187,19 @@ class Repository
 	/**
 	 * 写入默认分组：个人 / 工作 / 客户 / 归档
 	 *
-	 * 幂等：name 有 UNIQUE 约束，配合 INSERT OR IGNORE，无论 setupDatabase() 与
-	 * migrate() 重复执行多少次都不会产生重复行，也不会覆盖已存在分组的 sort
-	 * （用户后续调整过排序时不会被重置）。
+	 * 只在空表时写入：分组删除功能上线后，「至少保留一个分组」只是下限，
+	 * 用户仍可删掉某个种子分组；migrate 每请求都会调到这里，若无条件
+	 * INSERT OR IGNORE，被删掉的种子分组会被下一次请求悄悄复活。
+	 * 空表时依赖 name 的 UNIQUE 约束 + INSERT OR IGNORE 保证可重复执行，
+	 * 且不会覆盖已存在分组的 sort（用户调整过排序时不会被重置）。
 	 */
 	public function seedAccountGroups(): bool
 	{
 		try {
+			if ((int)$this->pdo->query('SELECT COUNT(*) FROM account_groups')->fetchColumn() > 0) {
+				return true;
+			}
+
 			$stmt = $this->pdo->prepare('INSERT OR IGNORE INTO account_groups (name, sort) VALUES (:name, :sort)');
 			$defaults = ['个人' => 1, '工作' => 2, '客户' => 3, '归档' => 4];
 			foreach ($defaults as $name => $sort) {
@@ -3098,6 +3399,89 @@ class Repository
 				created_at TEXT DEFAULT(NULL),
 				updated_at TEXT DEFAULT(NULL)
 			)');
+			return true;
+		} catch (Exception $e) {
+			return false;
+		}
+	}
+
+	/**
+	 * 检查 server_groups 表是否存在（老库升级用）
+	 */
+	public function checkServerGroupsTableExists()
+	{
+		try {
+			$stmt = $this->pdo->query("SELECT name FROM sqlite_master WHERE type='table' AND name='server_groups'");
+			return $stmt->fetch() !== false;
+		} catch (Exception $e) {
+			return false;
+		}
+	}
+
+	/**
+	 * 创建 server_groups 表并写入种子分组（refinements-v0.1.2 §3.1）
+	 *
+	 * servers.group_name 保持 TEXT 不改成外键：备份按名称导出、agent 协议、
+	 * 老库都零改动；本表只做候选值字典与重命名时的同步对象。
+	 * name 唯一既是业务约束（分组名不重复），也是种子 / 回填 INSERT OR IGNORE
+	 * 幂等的前提。
+	 */
+	public function setupServerGroupsTable()
+	{
+		try {
+			$this->pdo->exec('CREATE TABLE IF NOT EXISTS server_groups (
+				id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+				name TEXT NOT NULL UNIQUE,
+				sort INTEGER NOT NULL DEFAULT(100)
+			)');
+			return $this->seedServerGroups();
+		} catch (Exception $e) {
+			return false;
+		}
+	}
+
+	/**
+	 * 写入默认服务器分组：家庭 / 公网 / 公司 / 归档（排序值统一 100）
+	 *
+	 * 只在空表时写入：分组删除功能上线后，用户删掉的种子分组不能被下一次
+	 * migrate 复活（migrate 每请求都会执行到这里）。
+	 * 空表时 INSERT OR IGNORE 依赖 name 的 UNIQUE 约束保证可重复执行。
+	 */
+	public function seedServerGroups(): bool
+	{
+		try {
+			if ((int)$this->pdo->query('SELECT COUNT(*) FROM server_groups')->fetchColumn() > 0) {
+				return true;
+			}
+
+			$stmt = $this->pdo->prepare('INSERT OR IGNORE INTO server_groups (name, sort) VALUES (:name, :sort)');
+			$defaults = ['家庭' => 100, '公网' => 100, '公司' => 100, '归档' => 100];
+			foreach ($defaults as $name => $sort) {
+				$stmt->execute([':name' => $name, ':sort' => $sort]);
+			}
+			return true;
+		} catch (Exception $e) {
+			return false;
+		}
+	}
+
+	/**
+	 * 把 servers.group_name 里出现过的分组名回填进字典（refinements-v0.1.2 §3.1）
+	 *
+	 * 存量库升级用：servers.group_name 是历史自由文本（旧版表单只允许四个固定值，
+	 * 但旧备份恢复、手工改库都可能带入其他名称），字典建立后必须把这些名称补进来，
+	 * 否则设置页看不到、重命名也无从同步。
+	 * INSERT OR IGNORE + name UNIQUE 保证每次 migrate 重复执行都是幂等的；
+	 * sort 统一 100，靠自增 id 让回填分组稳定排在种子之后。
+	 */
+	public function backfillServerGroups(): bool
+	{
+		try {
+			$stmt = $this->pdo->prepare(
+				'INSERT OR IGNORE INTO server_groups (name, sort)
+				SELECT DISTINCT group_name, 100 FROM servers WHERE TRIM(group_name) <> \'\''
+			);
+			$stmt->execute();
 			return true;
 		} catch (Exception $e) {
 			return false;

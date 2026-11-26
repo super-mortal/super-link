@@ -430,6 +430,212 @@ class Repository
 		]);
 	}
 
+	/**
+	 * 创建 Skill 安装任务（refinements-v0.1.2 §4.4 方案 B）
+	 *
+	 * 只存来源地址、推导出的 Skill 名称、状态 / 阶段与错误摘要，不存任何凭据；
+	 * 实际安装由 utils/skill_install_worker.php 异步推进。
+	 *
+	 * @return int 新任务 id，<=0 表示写入失败
+	 */
+	public function createSkillInstallTask(string $source_url, string $skill_name): int
+	{
+		$date = date('Y-m-d H:i:s');
+		$stmt = $this->pdo->prepare(
+			'INSERT INTO skill_install_tasks (skill_name, source_url, status, stage, message, created_at, updated_at)
+			VALUES (:skill_name, :source_url, :status, :stage, :message, :created_at, :updated_at)'
+		);
+		$stmt->execute([
+			':skill_name' => $skill_name,
+			':source_url' => $source_url,
+			':status' => 'pending',
+			':stage' => 'connect',
+			':message' => '',
+			':created_at' => $date,
+			':updated_at' => $date,
+		]);
+
+		return (int)$this->pdo->lastInsertId();
+	}
+
+	public function getSkillInstallTask(int $id): ?array
+	{
+		$stmt = $this->pdo->prepare('SELECT * FROM skill_install_tasks WHERE id = :id');
+		$stmt->execute([':id' => $id]);
+		$row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+		return $row === false ? null : $row;
+	}
+
+	/**
+	 * 更新任务的状态 / 阶段 / 错误摘要
+	 *
+	 * 列名来自固定白名单，不接受调用方拼 SQL；updated_at 每次自动刷新，
+	 * 超时判定与已用时长都依赖它。
+	 */
+	public function updateSkillInstallTask(int $id, array $fields): bool
+	{
+		$sets = [];
+		$bindings = [':id' => $id];
+
+		foreach (['status', 'stage', 'message'] as $column) {
+			if (!array_key_exists($column, $fields)) {
+				continue;
+			}
+			$sets[] = "{$column} = :{$column}";
+			$bindings[":{$column}"] = (string)$fields[$column];
+		}
+
+		if ($sets === []) {
+			return false;
+		}
+
+		$sets[] = 'updated_at = :updated_at';
+		$bindings[':updated_at'] = date('Y-m-d H:i:s');
+
+		$stmt = $this->pdo->prepare(
+			'UPDATE skill_install_tasks SET ' . implode(', ', $sets) . ' WHERE id = :id'
+		);
+
+		return $stmt->execute($bindings);
+	}
+
+	/**
+	 * 原子认领任务：只有把 pending 改成 running 的那次 worker 执行继续安装
+	 *
+	 * 重复拉起（例如请求重试）时后到的进程认领失败并直接退出，避免同一任务
+	 * 被两个 git clone 同时操作同一目录。
+	 */
+	public function claimSkillInstallTask(int $id): bool
+	{
+		$stmt = $this->pdo->prepare(
+			"UPDATE skill_install_tasks
+			SET status = 'running', stage = 'connect', message = '', updated_at = :updated_at
+			WHERE id = :id AND status = 'pending'"
+		);
+		$stmt->execute([
+			':updated_at' => date('Y-m-d H:i:s'),
+			':id' => $id,
+		]);
+
+		return $stmt->rowCount() > 0;
+	}
+
+	/**
+	 * 只推进阶段（worker 的阶段回调）
+	 *
+	 * 带 status='running' 条件：任务若已被超时兜底置 failed，阶段回写不会把
+	 * 状态「复活」成 running。
+	 */
+	public function updateSkillInstallTaskStage(int $id, string $stage): bool
+	{
+		$stmt = $this->pdo->prepare(
+			"UPDATE skill_install_tasks
+			SET stage = :stage, updated_at = :updated_at
+			WHERE id = :id AND status = 'running'"
+		);
+
+		return $stmt->execute([
+			':stage' => $stage,
+			':updated_at' => date('Y-m-d H:i:s'),
+			':id' => $id,
+		]);
+	}
+
+	/**
+	 * worker 收尾（success / failed）
+	 *
+	 * 同样带 status='running' 条件：任务若已被超时兜底置 failed，这里不再覆盖，
+	 * 保证「终态只写一次」。
+	 */
+	public function finishSkillInstallTask(int $id, string $status, string $message): bool
+	{
+		$stmt = $this->pdo->prepare(
+			"UPDATE skill_install_tasks
+			SET status = :status, message = :message, updated_at = :updated_at
+			WHERE id = :id AND status = 'running'"
+		);
+
+		return $stmt->execute([
+			':status' => $status,
+			':message' => $message,
+			':updated_at' => date('Y-m-d H:i:s'),
+			':id' => $id,
+		]);
+	}
+
+	/**
+	 * 查找同一来源地址或同名 Skill 尚未结束的安装任务（并发守卫）
+	 */
+	public function findActiveSkillInstallTask(string $source_url, string $skill_name): ?array
+	{
+		$stmt = $this->pdo->prepare(
+			"SELECT * FROM skill_install_tasks
+			WHERE status IN ('pending', 'running') AND (source_url = :source_url OR skill_name = :skill_name)
+			ORDER BY id ASC LIMIT 1"
+		);
+		$stmt->execute([
+			':source_url' => $source_url,
+			':skill_name' => $skill_name,
+		]);
+		$row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+		return $row === false ? null : $row;
+	}
+
+	/**
+	 * 超时兜底：pending / running 超过 N 分钟未更新即置 failed
+	 *
+	 * 正常路径由 worker 自己收尾；本方法覆盖 worker 被系统杀掉、exec 拉起
+	 * 但进程未启动等「永远不回写」的情况，避免任务卡在进行中。查询端点与
+	 * migrate() 都会调用，方法内部兜底异常，失败返回 0。
+	 */
+	public function failStaleSkillInstallTasks(int $minutes = 10): int
+	{
+		try {
+			$stmt = $this->pdo->prepare(
+				"UPDATE skill_install_tasks
+				SET status = 'failed', message = :message, updated_at = :updated_at
+				WHERE status IN ('pending', 'running') AND updated_at < :cutoff"
+			);
+			$stmt->execute([
+				':message' => sprintf(
+					'[SL-EXT-0001] 安装超时（超过 %d 分钟未完成），已标记失败，请检查网络后重试',
+					max(1, $minutes)
+				),
+				':updated_at' => date('Y-m-d H:i:s'),
+				':cutoff' => date('Y-m-d H:i:s', strtotime('-' . max(1, $minutes) . ' minutes')),
+			]);
+
+			return $stmt->rowCount();
+		} catch (Exception $e) {
+			return 0;
+		}
+	}
+
+	/**
+	 * 清理历史安装任务（migrate() 末尾顺带执行）
+	 *
+	 * 只删已结束（success / failed）且超过保留天数的行，进行中的任务不清理；
+	 * 与服务器明细清理同一范式：轻量、幂等、异常不外抛。
+	 */
+	public function cleanupSkillInstallTasks(int $days = 7): int
+	{
+		try {
+			$stmt = $this->pdo->prepare(
+				"DELETE FROM skill_install_tasks
+				WHERE status IN ('success', 'failed') AND updated_at < :cutoff"
+			);
+			$stmt->execute([
+				':cutoff' => date('Y-m-d H:i:s', strtotime('-' . max(1, $days) . ' days')),
+			]);
+
+			return $stmt->rowCount();
+		} catch (Exception $e) {
+			return 0;
+		}
+	}
+
 	public function getUser(int $user_id)
 	{
 		$stmt = $this->pdo->prepare('SELECT * FROM users WHERE id = :user_id');
@@ -2610,6 +2816,15 @@ class Repository
 				return false;
 			}
 
+			// Skill 安装任务表（refinements-v0.1.2 §4.4 方案 B）：与 migrate() 共用同一建表方法
+			if (!$this->setupSkillInstallTasksTable()) {
+				return false;
+			}
+
+			if (!$this->createSkillInstallTaskIndexes()) {
+				return false;
+			}
+
 			return true;
 		} catch (Exception $e) {
 			return false;
@@ -2628,6 +2843,16 @@ class Repository
 
 		if (!$this->checkSkillsTagsTableExists() && !$this->setupSkillsTagsTable()) {
 			throw new Exception('Failed to set up skills_tags table');
+		}
+
+		// Skill 安装任务表（refinements-v0.1.2 §4.4 方案 B）：老库在这里补齐，
+		// 索引每次请求都幂等补建（与账号库 / 服务器索引同一模式）
+		if (!$this->checkSkillInstallTasksTableExists() && !$this->setupSkillInstallTasksTable()) {
+			throw new Exception('Failed to set up skill_install_tasks table');
+		}
+
+		if (!$this->createSkillInstallTaskIndexes()) {
+			throw new Exception('Failed to create indexes for skill install tasks');
 		}
 
 		// 设置表（PRD O-5）：老库在这里补齐，与 setupDatabase() 保持幂等一致
@@ -2726,6 +2951,11 @@ class Repository
 		// 顺带删除 server_metrics / server_disks / server_docker 中过期的行。
 		// 清理方法内部自行兜底异常，失败不影响迁移主流程
 		$this->cleanupServerRetention();
+
+		// Skill 安装任务兜底（refinements-v0.1.2 §4.4 方案 B）：超时的进行中任务
+		// 置 failed，已结束且超过保留天数的历史行删除；同为尽力而为、不外抛异常
+		$this->failStaleSkillInstallTasks();
+		$this->cleanupSkillInstallTasks();
 	}
 
 	/**
@@ -2846,6 +3076,66 @@ class Repository
 				FOREIGN KEY(tag_id) REFERENCES tags(id)
 				ON DELETE CASCADE
 			)');
+			return true;
+		} catch (Exception $e) {
+			return false;
+		}
+	}
+
+	/**
+	 * Check if skill_install_tasks table exists
+	 */
+	public function checkSkillInstallTasksTableExists()
+	{
+		try {
+			$stmt = $this->pdo->query(
+				"SELECT name FROM sqlite_master WHERE type='table' AND name='skill_install_tasks'"
+			);
+			return $stmt->fetch() !== false;
+		} catch (Exception $e) {
+			return false;
+		}
+	}
+
+	/**
+	 * 创建 Skill 安装任务表（refinements-v0.1.2 §4.4 方案 B）
+	 *
+	 * 状态 pending / running / success / failed，阶段 connect / clone / verify / write，
+	 * 与 utils/skill_install_worker.php 的回写字段一一对应；不存 Token 或任何凭据。
+	 * setupDatabase() 与 migrate() 共用本方法，CREATE TABLE IF NOT EXISTS 保证幂等。
+	 */
+	public function setupSkillInstallTasksTable()
+	{
+		try {
+			$this->pdo->exec('CREATE TABLE IF NOT EXISTS skill_install_tasks (
+				id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+				skill_name TEXT NOT NULL DEFAULT \'\',
+				source_url TEXT NOT NULL DEFAULT \'\',
+				status TEXT NOT NULL DEFAULT \'pending\',
+				stage TEXT NOT NULL DEFAULT \'connect\',
+				message TEXT NOT NULL DEFAULT \'\',
+				created_at TEXT DEFAULT(NULL),
+				updated_at TEXT DEFAULT(NULL)
+			)');
+			return true;
+		} catch (Exception $e) {
+			return false;
+		}
+	}
+
+	/**
+	 * 安装任务索引：并发守卫按 source_url / skill_name 查进行中任务，
+	 * 超时与清理按 status + updated_at 扫过期行
+	 */
+	public function createSkillInstallTaskIndexes(): bool
+	{
+		try {
+			$this->pdo->exec(
+				'CREATE INDEX IF NOT EXISTS "idx_skill_install_tasks_source" ON skill_install_tasks(source_url)'
+			);
+			$this->pdo->exec(
+				'CREATE INDEX IF NOT EXISTS "idx_skill_install_tasks_status" ON skill_install_tasks(status, updated_at)'
+			);
 			return true;
 		} catch (Exception $e) {
 			return false;

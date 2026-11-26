@@ -56,6 +56,7 @@ use Controllers\SkillsDetailController;
 use Controllers\SkillsExportController;
 use Controllers\SkillsGetController;
 use Controllers\SkillsInstallController;
+use Controllers\SkillsInstallStatusController;
 use Controllers\SkillsTagsUpdateController;
 use Controllers\SkillsUpdateController;
 use Controllers\SkillsUploadController;
@@ -114,6 +115,16 @@ return [
 			],
 			'install' => [
 				'POST' => SkillsInstallController::class,
+				// 安装任务状态（refinements-v0.1.2 §4.4 方案 B）：dev-spec §4.1 约定
+				// GET /api/skills/install/status?task-id=；用户态端点，需登录
+				'status' => [
+					'GET' => SkillsInstallStatusController::class,
+				],
+			],
+			// 同一状态控制器的等价路径：任务书使用 /api/skills/install-status?id=，
+			// 两条路径都注册，控制器同时接受 task-id / task_id / id 参数
+			'install-status' => [
+				'GET' => SkillsInstallStatusController::class,
 			],
 			'tags' => [
 				'PATCH' => SkillsTagsUpdateController::class,

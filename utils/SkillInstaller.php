@@ -19,6 +19,15 @@ class SkillInstaller
 	const MAX_ENTRY_COUNT = 2000;
 	const MAX_UNCOMPRESSED_SIZE = 268435456; // 256MB，防 zip bomb
 
+	/**
+	 * 安装阶段（refinements-v0.1.2 §4.4 方案 B）：与 skill_install_tasks.stage 取值一一对应。
+	 * git clone 本身不返回百分比，worker 只能按这些阶段回写，前端展示不确定进度。
+	 */
+	const STAGE_CONNECT = 'connect';
+	const STAGE_CLONE = 'clone';
+	const STAGE_VERIFY = 'verify';
+	const STAGE_WRITE = 'write';
+
 	public function __construct(
 		protected Repository $repository,
 		protected GitHelper $git_helper = new GitHelper()
@@ -28,10 +37,15 @@ class SkillInstaller
 	/**
 	 * Install a skill from a public GitHub repository.
 	 *
+	 * @param callable|null $on_stage 阶段回调（string $stage）：安装任务 worker 用它把真实
+	 *                                阶段写回 skill_install_tasks；同步调用方传 null 即可。
+	 *
 	 * @return array Skill object matching the GET /api/skills item shape.
 	 */
-	public function installFromGithub(string $url): array
+	public function installFromGithub(string $url, ?callable $on_stage = null): array
 	{
+		$this->reportStage($on_stage, self::STAGE_CONNECT);
+
 		[$clone_url, $name] = $this->normalizeGithubUrl($url);
 
 		if ($this->repository->getSkillByName($name)) {
@@ -46,7 +60,9 @@ class SkillInstaller
 		}
 
 		try {
+			$this->reportStage($on_stage, self::STAGE_CLONE);
 			$this->git_helper->cloneDepth1($clone_url, $dest);
+			$this->reportStage($on_stage, self::STAGE_VERIFY);
 			$skill_file = $this->locateSkillFile($dest, $name);
 			$frontmatter = SkillFrontmatter::parse((string)file_get_contents($skill_file));
 
@@ -59,6 +75,7 @@ class SkillInstaller
 				));
 			}
 
+			$this->reportStage($on_stage, self::STAGE_WRITE);
 			$fingerprint = substr($this->git_helper->head($dest), 0, self::FINGERPRINT_LENGTH);
 
 			$skill_id = (int)$this->repository->createSkill([
@@ -292,9 +309,12 @@ class SkillInstaller
 	 * `https://github.com/owner/repo/tree/<branch>/<sub-path>`.
 	 * Everything else (ssh, http, other hosts) is rejected with SL-SEC-0002.
 	 *
+	 * 安装任务的启动端点也要复用它做「建任务前的地址校验 + 名称推导」，
+	 * 因此保持 public；真正 clone 仍只认这里返回的 clone url。
+	 *
 	 * @return array{0: string, 1: string}
 	 */
-	private function normalizeGithubUrl(string $url): array
+	public function normalizeGithubUrl(string $url): array
 	{
 		$url = trim($url);
 
@@ -342,6 +362,16 @@ class SkillInstaller
 	private function stripGitSuffix(string $value): string
 	{
 		return preg_replace('/\.git$/i', '', $value) ?? $value;
+	}
+
+	/**
+	 * 阶段回写：只有异步安装任务传入回调，其它同步调用方不受影响
+	 */
+	private function reportStage(?callable $on_stage, string $stage): void
+	{
+		if ($on_stage !== null) {
+			$on_stage($stage);
+		}
 	}
 
 	private function sanitizeName(string $name): string

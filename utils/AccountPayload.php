@@ -123,8 +123,6 @@ class AccountPayload
 			'identifier' => self::requiredText($input, 'identifier', '账号标识', self::MAX_IDENTIFIER_LENGTH),
 			// login_url 可为空：第三方登录账号没有可记的登录地址，列本身 NOT NULL DEFAULT ''
 			'login_url' => self::optionalText($input, 'login_url', '登录地址', self::MAX_LOGIN_URL_LENGTH),
-			// favorite 缺省 0（PRD §6.2）
-			'favorite' => self::parseFavorite($input['favorite'] ?? null),
 		];
 
 		$data = array_merge($data, self::parseRelations($input), self::parseSecrets($input));
@@ -160,10 +158,6 @@ class AccountPayload
 
 		if (array_key_exists('login_url', $input)) {
 			$data['login_url'] = self::optionalText($input, 'login_url', '登录地址', self::MAX_LOGIN_URL_LENGTH);
-		}
-
-		if (array_key_exists('favorite', $input)) {
-			$data['favorite'] = self::parseFavorite($input['favorite']);
 		}
 
 		return array_merge($data, self::parseRelations($input), self::parseSecrets($input));
@@ -379,7 +373,6 @@ class AccountPayload
 			'group_id' => isset($row['group_id']) ? (int)$row['group_id'] : null,
 			'login_url' => (string)($row['login_url'] ?? ''),
 			'login_via_account_id' => isset($row['login_via_account_id']) ? (int)$row['login_via_account_id'] : null,
-			'favorite' => 1 === (int)($row['favorite'] ?? 0),
 			'password_updated_at' => $row['password_updated_at'] ?? null,
 			'last_used_at' => $row['last_used_at'] ?? null,
 			'created_at' => $row['created_at'] ?? null,
@@ -614,14 +607,6 @@ class AccountPayload
 		}
 
 		throw new ValidationException('授权日期格式不正确，应为 YYYY-MM-DD', 400);
-	}
-
-	/**
-	 * favorite 归一为 0/1，与建表 CHECK(favorite IN (0, 1)) 保持一致
-	 */
-	private static function parseFavorite($value): int
-	{
-		return in_array($value, [true, 1, '1', 'true'], true) ? 1 : 0;
 	}
 
 	/**

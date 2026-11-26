@@ -37,7 +37,6 @@ class Repository
 		'group_id',
 		'login_url',
 		'login_via_account_id',
-		'favorite',
 		'password_ct',
 		'password_iv',
 		'totp_ct',
@@ -818,7 +817,6 @@ class Repository
 		$values['platform'] = (string)($data['platform'] ?? '');
 		$values['identifier'] = (string)($data['identifier'] ?? '');
 		$values['login_url'] = (string)($data['login_url'] ?? '');
-		$values['favorite'] = !empty($data['favorite']) ? 1 : 0;
 		$values['created_at'] = $data['created_at'] ?? $date;
 		$values['updated_at'] = $data['updated_at'] ?? $date;
 
@@ -2632,6 +2630,13 @@ class Repository
 			throw new Exception('Failed to set up accounts table');
 		}
 
+		// 账号库收藏功能下线（refinements-v0.1.2 §4.8）：老库幂等删除 favorite 列。
+		// 先探测列是否存在再删，兼容 SQLite < 3.35（不支持 DROP COLUMN）：删不掉就保留列，
+		// 代码侧已不再读写该列；**禁止**为删列重建 accounts 表（会丢密文数据）。
+		if ($this->checkAccountsFavoriteColumnExists()) {
+			$this->dropAccountsFavoriteColumn();
+		}
+
 		if (!$this->checkAccountAuthorizationsTableExists() && !$this->setupAccountAuthorizationsTable()) {
 			throw new Exception('Failed to set up account_authorizations table');
 		}
@@ -3225,6 +3230,44 @@ class Repository
 	}
 
 	/**
+	 * 检查 accounts.favorite 列是否还存在（收藏功能下线后的老库升级用）
+	 *
+	 * 用 PRAGMA table_info 探测列名，避免依赖 SQLite 版本特性；
+	 * 查不到表或 PRAGMA 失败时返回 false，交给后续建表逻辑处理。
+	 */
+	public function checkAccountsFavoriteColumnExists(): bool
+	{
+		try {
+			$stmt = $this->pdo->query('PRAGMA table_info(accounts)');
+			foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $column) {
+				if ('favorite' === ($column['name'] ?? '')) {
+					return true;
+				}
+			}
+			return false;
+		} catch (Exception $e) {
+			return false;
+		}
+	}
+
+	/**
+	 * 删除 accounts.favorite 列（幂等，收藏功能下线）
+	 *
+	 * SQLite 3.35+ 才支持 DROP COLUMN：老版本会抛异常，此时保留列并记录日志即可，
+	 * 代码侧不再读写该列；绝不为了删列重建 accounts 表——重建会丢密文数据。
+	 */
+	public function dropAccountsFavoriteColumn(): bool
+	{
+		try {
+			$this->pdo->exec('ALTER TABLE accounts DROP COLUMN favorite');
+			return true;
+		} catch (Exception $e) {
+			error_log('删除 accounts.favorite 列失败，保留该列（代码已不再读写）：' . $e->getMessage());
+			return false;
+		}
+	}
+
+	/**
 	 * 创建 accounts 表（PRD §6.2）
 	 *
 	 * 密文字段全部可空：密码允许为空（第三方登录场景，PRD §10.2），
@@ -3242,7 +3285,6 @@ class Repository
 				group_id INTEGER DEFAULT(NULL),
 				login_url TEXT NOT NULL DEFAULT \'\',
 				login_via_account_id INTEGER DEFAULT(NULL),
-				favorite INTEGER NOT NULL DEFAULT(0) CHECK (favorite IN (0, 1)),
 				password_ct BLOB DEFAULT(NULL),
 				password_iv BLOB DEFAULT(NULL),
 				totp_ct BLOB DEFAULT(NULL),

@@ -108,7 +108,8 @@ class VaultBackupPayload
 			'platform' => self::requiredText($account, 'platform', '平台', 40),
 			'identifier' => self::requiredText($account, 'identifier', '账号标识', 190),
 			'login_url' => self::optionalText($account, 'login_url', '登录地址', 500),
-			'favorite' => in_array($account['favorite'] ?? null, [true, 1, '1'], true) ? 1 : 0,
+			// 旧版本备份里的 favorite 字段（收藏功能已下线）直接忽略：未知字段不参与校验，
+			// 保证旧 .slvault 仍可正常导入
 			// 分组只认名称不认 id：不同设备的 account_groups 自增 id 不一定相同，
 			// 名称（个人 / 工作 / 客户 / 归档）才是跨设备稳定标识，导入时按名称解析
 			'group' => self::optionalGroupName($account['group'] ?? null),

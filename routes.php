@@ -31,6 +31,10 @@ use Controllers\ItemsFetchMetadataController;
 use Controllers\ItemsGetController;
 use Controllers\ItemsTagsUpdateController;
 use Controllers\ItemsUpdateController;
+use Controllers\ServerGroupsDeleteController;
+use Controllers\ServerGroupsGetController;
+use Controllers\ServerGroupsPatchController;
+use Controllers\ServerGroupsPostController;
 use Controllers\ServersDeleteController;
 use Controllers\ServersDetailController;
 use Controllers\ServersGetController;
@@ -237,6 +241,19 @@ return [
 			],
 			'token' => [
 				'POST' => ServersTokenController::class,
+			],
+			// 分组字典 CRUD（refinements-v0.1.2 §3.2）：列表 / 新增 / 重命名挂在
+			// /api/servers/groups，删除走 /api/servers/groups/delete（POST，与其它
+			// 资源的删除端点一致）；id 一律请求体传递（Router 无路径参数）
+			'groups' => [
+				'/' => [
+					'GET' => ServerGroupsGetController::class,
+					'POST' => ServerGroupsPostController::class,
+					'PATCH' => ServerGroupsPatchController::class,
+				],
+				'delete' => [
+					'POST' => ServerGroupsDeleteController::class,
+				],
 			],
 		],
 		// agent 态端点（PRD docs/prd/server.md §5.2 / §5.6）：被监控机调用，

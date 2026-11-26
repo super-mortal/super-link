@@ -2400,6 +2400,124 @@ class Repository
 	}
 
 	/**
+	 * 待办全量查询（PRD todo.md §6.2 / T6）
+	 *
+	 * 首版不做分页、不分段，全量返回交由前端分段 / 搜索。created_at 由服务端按秒
+	 * 写入，同一秒内连点回车会产生多条同时间戳数据，只按 created_at DESC 排序时
+	 * SQLite 不保证稳定顺序，因此追加 id DESC 兜底，保证「最新在上」可复现。
+	 * done 出参统一转 bool（库内存 0/1），与前端类型契约一致。
+	 */
+	public function getTodos(): array
+	{
+		$stmt = $this->pdo->query(
+			'SELECT id, text, done, created_at, done_at, updated_at
+			FROM todos
+			ORDER BY created_at DESC, id DESC'
+		);
+		$todos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+		foreach ($todos as &$todo) {
+			$todo = $this->normalizeTodoRow($todo);
+		}
+		unset($todo);
+
+		return $todos;
+	}
+
+	/**
+	 * 新增待办（PRD todo.md §5.2 / §6.2）
+	 *
+	 * 时间一律由服务端生成（Asia/Shanghai，bootstrap 已设置），前端不传；
+	 * created_at 与 updated_at 同值，done 固定 0、done_at 为空。
+	 * $text 的 trim / 长度校验由上层 Utils\TodoPayload 完成，本方法只落库。
+	 */
+	public function createTodo(string $text): ?array
+	{
+		$now = date('Y-m-d H:i:s');
+		$stmt = $this->pdo->prepare(
+			'INSERT INTO todos (text, done, created_at, done_at, updated_at)
+			VALUES (:text, 0, :created_at, NULL, :updated_at)'
+		);
+		$stmt->execute([
+			':text' => $text,
+			':created_at' => $now,
+			':updated_at' => $now,
+		]);
+
+		return $this->getTodoById((int)$this->pdo->lastInsertId());
+	}
+
+	/**
+	 * 切换待办完成状态（PRD todo.md §5.5 / §6.2）
+	 *
+	 * done=true 时写入完成时间（已完成区按 done_at 倒序）；done=false 时必须把
+	 * done_at 置回 NULL，避免残留旧完成时间打乱下次完成的排序。updated_at 每次
+	 * 都刷新，便于将来排查。id 不存在时返回 null，由上层转 404 / 400。
+	 */
+	public function updateTodoDone(int $id, bool $done): ?array
+	{
+		$now = date('Y-m-d H:i:s');
+		$stmt = $this->pdo->prepare(
+			'UPDATE todos
+			SET done = :done, done_at = :done_at, updated_at = :updated_at
+			WHERE id = :id'
+		);
+		$stmt->execute([
+			':done' => $done ? 1 : 0,
+			':done_at' => $done ? $now : null,
+			':updated_at' => $now,
+			':id' => $id,
+		]);
+
+		// 以回读结果判断 id 是否存在，不依赖 rowCount 对「同值更新」的计数口径
+		return $this->getTodoById($id);
+	}
+
+	/**
+	 * 删除单条待办（PRD todo.md §5.6），返回受影响行数供上层区分不存在
+	 */
+	public function deleteTodo(int $id): int
+	{
+		$stmt = $this->pdo->prepare('DELETE FROM todos WHERE id = :id');
+		$stmt->execute([':id' => $id]);
+		return $stmt->rowCount();
+	}
+
+	/**
+	 * 清除全部已完成待办（PRD todo.md §5.5），返回删除条数供响应与前端计数
+	 */
+	public function clearDoneTodos(): int
+	{
+		$stmt = $this->pdo->prepare('DELETE FROM todos WHERE done = 1');
+		$stmt->execute();
+		return $stmt->rowCount();
+	}
+
+	/**
+	 * 按 id 查待办（新增 / 更新后回读，保证出参与查询列表同源）
+	 *
+	 * 不对外暴露：内部回读用，调用方拿到 null 即代表 id 不存在。
+	 */
+	private function getTodoById(int $id): ?array
+	{
+		$stmt = $this->pdo->prepare(
+			'SELECT id, text, done, created_at, done_at, updated_at FROM todos WHERE id = :id'
+		);
+		$stmt->execute([':id' => $id]);
+		$todo = $stmt->fetch(PDO::FETCH_ASSOC);
+		return $todo === false ? null : $this->normalizeTodoRow($todo);
+	}
+
+	/**
+	 * 待办行出参归一：id 转 int、done 由 0/1 转 bool
+	 */
+	private function normalizeTodoRow(array $todo): array
+	{
+		$todo['id'] = (int)$todo['id'];
+		$todo['done'] = (bool)$todo['done'];
+		return $todo;
+	}
+
+	/**
 	 * 状态归一：非法或缺失一律回落到 active，与建表 CHECK 约束保持一致
 	 */
 	private function normalizeAuthorizationStatus($status): string
@@ -2816,6 +2934,11 @@ class Repository
 				return false;
 			}
 
+			// 待办表与索引（PRD todo.md §6.1）：与 migrate() 共用同一幂等方法
+			if (!$this->setupTodosTable()) {
+				return false;
+			}
+
 			// Skill 安装任务表（refinements-v0.1.2 §4.4 方案 B）：与 migrate() 共用同一建表方法
 			if (!$this->setupSkillInstallTasksTable()) {
 				return false;
@@ -2935,6 +3058,13 @@ class Repository
 
 		if (!$this->backfillServerGroups()) {
 			throw new Exception('Failed to backfill server groups');
+		}
+
+		// 待办表与索引（PRD todo.md §6.1）：老库在这里补齐。建表与建索引合并在
+		// setupTodosTable() 内且全是 IF NOT EXISTS，每次请求无条件执行也幂等，
+		// 同时兜底「表已存在但索引缺失」的历史库
+		if (!$this->setupTodosTable()) {
+			throw new Exception('Failed to set up todos table');
 		}
 
 		// 标签模块隔离（PRD O-9）：补 module 列、迁移历史数据、更换唯一索引，每一步都幂等
@@ -4023,6 +4153,32 @@ class Repository
 					$this->pdo->exec($sql);
 				}
 			}
+			return true;
+		} catch (Exception $e) {
+			return false;
+		}
+	}
+
+	/**
+	 * 创建待办表与索引（PRD todo.md §6.1）
+	 *
+	 * setupDatabase()（新库）与 migrate()（老库增量）共用本方法，两条路径的 DDL
+	 * 完全一致；建表与建索引都是 IF NOT EXISTS，老库每请求重复执行也幂等。
+	 * 索引 (done, created_at) 服务「未完成 / 已完成」筛选与按创建时间排序。
+	 */
+	public function setupTodosTable(): bool
+	{
+		try {
+			$this->pdo->exec('CREATE TABLE IF NOT EXISTS todos (
+				id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+				text TEXT NOT NULL,
+				done INTEGER NOT NULL DEFAULT(0),
+				created_at TEXT NOT NULL,
+				done_at TEXT DEFAULT(NULL),
+				updated_at TEXT NOT NULL
+			)');
+
+			$this->pdo->exec('CREATE INDEX IF NOT EXISTS idx_todos_done_created ON todos (done, created_at)');
 			return true;
 		} catch (Exception $e) {
 			return false;

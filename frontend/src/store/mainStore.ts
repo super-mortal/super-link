@@ -516,19 +516,20 @@ class MainStore {
       );
     }, 2000);
   };
-  installSkill = async ({ url }: { url: string }): Promise<SkillType | null> => {
-    const response = await this.runRequest(API_ENDPOINTS.skills.install, 'POST', { url }, '安装 Skill 失败');
+  /**
+   * 启动 GitHub 安装任务（refinements-v0.1.2 §4.4 方案 B）。
+   * 契约变化：POST /api/skills/install 不再同步返回 skill，而是 `{ task, task_id }`；
+   * 本方法只负责建任务，进度与最终结果由调用方轮询 fetchSkillInstallTask，
+   * 成功后由调用方刷新列表（避免这里再弹一条「任务已创建」的成功 toast 干扰进度态）。
+   */
+  installSkill = async ({ url }: { url: string }): Promise<SkillInstallTaskType | null> => {
+    const response = await this.runRequest(API_ENDPOINTS.skills.install, 'POST', { url }, '安装 Skill 失败', true);
 
     if (response === null) {
       return null;
     }
 
-    const installed = (response?.data?.skill ?? null) as SkillType | null;
-    await this.fetchSkills();
-    if (installed) {
-      this.markSkillJustInstalled(installed.id);
-    }
-    return installed;
+    return (response?.data?.task ?? null) as SkillInstallTaskType | null;
   };
   uploadSkill = async (file: File): Promise<SkillType | null> => {
     const formData = new FormData();

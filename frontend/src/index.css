@@ -286,3 +286,25 @@ a:hover {
     box-shadow: 0 0 0 0 transparent;
   }
 }
+
+/* Skill 安装的不确定进度条：git clone 不返回百分比，用循环滑动色块表示「进行中」（refinements-v0.1.2 §4.4） */
+@keyframes skill-install-indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(300%);
+  }
+}
+
+.skill-install-indeterminate {
+  animation: skill-install-indeterminate 1.4s ease-in-out infinite;
+}
+
+/* 尊重系统的减少动态效果偏好：停掉滑动，保留静态色块 */
+@media (prefers-reduced-motion: reduce) {
+  .skill-install-indeterminate {
+    animation: none;
+  }
+}

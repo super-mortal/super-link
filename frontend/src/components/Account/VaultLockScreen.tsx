@@ -45,7 +45,8 @@ export const VaultLockScreen = observer(({ stats = EMPTY_VAULT_STATS }: VaultLoc
         </CardHeader>
 
         <CardContent className="flex flex-col gap-6">
-          <SecureContextWarning />
+          {/* 未初始化时 VaultSetupForm 会给出更具体的 HTTP 阻塞说明，这里不再重复一条红条 */}
+          {isInitialized && <SecureContextWarning />}
 
           <VaultStatsRow stats={stats} />
 

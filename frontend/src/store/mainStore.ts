@@ -45,6 +45,7 @@ import {
   VaultImportModeType,
   VaultMetaPayloadType,
   VaultMetaType,
+  VaultSetupErrorType,
 } from '@/lib/types.ts';
 import { DEFAULT_MODULE } from '@/lib/modules.ts';
 import { SERVER_STATUS_ORDER } from '@/lib/serverFormat.ts';
@@ -56,6 +57,21 @@ import { preferencesStore } from './preferencesStore.ts';
  * 账号库没有标签入口，兜底按 bookmarks 处理。
  */
 const tagModuleOf = (module: ModuleKey): 'bookmarks' | 'skills' => (module === 'skills' ? 'skills' : 'bookmarks');
+
+/**
+ * 把账号库初始化的请求失败归为「网络」或「服务端」（refinements-v0.1.2 §4.3）。
+ * fetch 本身失败会抛 TypeError（Failed to fetch / NetworkError），此时没有后端 message；
+ * 其余失败由 runRequest 抛出后端 message，原样透传给表单展示，便于用户定位并重试。
+ */
+const describeVaultSetupFailure = (failure: unknown): VaultSetupErrorType => {
+  if (failure instanceof TypeError) {
+    return { kind: 'network', message: '网络连接失败，请检查网络后重试' };
+  }
+  if (failure instanceof Error && failure.message.trim() !== '') {
+    return { kind: 'server', message: failure.message };
+  }
+  return { kind: 'server', message: '初始化账号库失败，请稍后重试' };
+};
 
 /**
  * 更新成功的一次性结果键。
@@ -153,7 +169,10 @@ class MainStore {
     bodyData: object | FormData,
     defaultErrorMessage: string,
     skipSuccessMessage: boolean = false,
-    skipErrorMessage: boolean = false
+    skipErrorMessage: boolean = false,
+    // 可选失败回调：供需要展示可归因错误（网络 / 服务端 message）的调用方读取原始失败原因，
+    // 不改变现有 toast 行为（refinements-v0.1.2 §4.3）
+    onError?: (reason: unknown) => void
   ) => {
     const options = {
       method: method,
@@ -198,6 +217,7 @@ class MainStore {
         return data;
       })
       .catch((reason) => {
+        onError?.(reason);
         if (!skipErrorMessage) {
           toast.error(reason instanceof Error ? reason.message : defaultErrorMessage, {
             position: 'top-center',
@@ -1532,11 +1552,29 @@ class MainStore {
   /**
    * 初始化账号库（首次设置主密码）。只上传 KDF 参数 + 盐 + 被包裹的 DEK，主密码不出浏览器。
    * 成功/失败提示由 vaultStore 统一处理（锁定页有自己的错误区，不用 toast）。
+   *
+   * 返回值：成功为 null，失败为带类型与具体 message 的归因（refinements-v0.1.2 §4.3），
+   * 表单据此区分网络 / 服务端错误并允许重试，不再统一显示「请稍后重试」。
    */
-  setupVault = async (payload: VaultMetaPayloadType): Promise<boolean> => {
-    const response = await this.runRequest(API_ENDPOINTS.vault.setup, 'POST', payload, '初始化账号库失败', true, true);
+  setupVault = async (payload: VaultMetaPayloadType): Promise<VaultSetupErrorType | null> => {
+    let failure: unknown = null;
+    const response = await this.runRequest(
+      API_ENDPOINTS.vault.setup,
+      'POST',
+      payload,
+      '初始化账号库失败',
+      true,
+      true,
+      (reason) => {
+        failure = reason;
+      }
+    );
 
-    return response !== null;
+    if (response !== null) {
+      return null;
+    }
+
+    return describeVaultSetupFailure(failure);
   };
 
   /** 更换主密码：重新包裹同一把 DEK（旧主密码正确性由前端 GCM 校验判断） */

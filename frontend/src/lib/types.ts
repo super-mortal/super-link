@@ -212,6 +212,16 @@ export type VaultMetaPayloadType = {
   wrap_nonce: string;
 };
 
+/**
+ * 账号库初始化失败的归因（refinements-v0.1.2 §4.3）。
+ * insecure = 非安全上下文（HTTP，crypto.subtle 不可用）；network = fetch 本身失败；
+ * server = 后端返回的 message。设置表单据此展示可重试的具体原因。
+ */
+export type VaultSetupErrorType = {
+  kind: 'insecure' | 'network' | 'server';
+  message: string;
+};
+
 /** 账号密文集合：缺省表示该字段未填写，不是「空字符串」 */
 export type AccountSecretsType = {
   password?: VaultSecretField | null;

@@ -23,10 +23,11 @@ import {
   DEFAULT_KDF_PARALLELISM,
   DEFAULT_KDF_PARAMS,
   MIN_MASTER_PASSWORD_LENGTH,
+  VAULT_INSECURE_CONTEXT_MESSAGE,
 } from '@/lib/vaultConstants.ts';
-import { deriveKek, generateDek, generateSalt, unwrapDek, wrapDek } from '@/lib/vaultCrypto.ts';
+import { deriveKek, generateDek, generateSalt, isVaultCryptoAvailable, unwrapDek, wrapDek } from '@/lib/vaultCrypto.ts';
 import * as vaultSession from '@/lib/vaultSession.ts';
-import type { VaultKdfParamsType, VaultMetaPayloadType, VaultMetaType } from '@/lib/types.ts';
+import type { VaultKdfParamsType, VaultMetaPayloadType, VaultMetaType, VaultSetupErrorType } from '@/lib/types.ts';
 
 /** 自动锁定检查间隔：15 秒足够精确到「分钟级」阈值，又不至于频繁唤醒主线程 */
 const AUTO_LOCK_CHECK_INTERVAL_MS = 15_000;
@@ -76,6 +77,8 @@ class VaultStore {
   unlockError: string | null = null;
   /** 非解锁类操作（初始化 / 改密 / 重置）的错误提示，展示在对应表单内 */
   error: string | null = null;
+  /** 设置主密码失败的具体原因（refinements-v0.1.2 §4.3），与 `error` 分开以便区分错误类型 */
+  setupError: VaultSetupErrorType | null = null;
   /** 连续解锁失败次数，用于递进延迟（解锁成功即清零） */
   failedAttempts = 0;
   /** 自动锁定分钟数（0 = 不自动锁定），来自偏好设置并可写回 */
@@ -260,6 +263,7 @@ class VaultStore {
     this.unlockedFlag = false;
     this.unlockError = null;
     this.error = null;
+    this.setupError = null;
     this.hiddenAt = null;
   };
 
@@ -274,9 +278,17 @@ class VaultStore {
   /**
    * 首次设置主密码：生成盐 + DEK，用 KEK 包裹后交给后端保存，成功后直接进入解锁态。
    * 主密码不离开浏览器，也不进任何 store 字段或日志。
+   *
+   * 失败提示区分三种情况（refinements-v0.1.2 §4.3）：非安全上下文直接阻塞并说明原因；
+   * 网络 / 服务端失败透传具体 message 供表单展示并可重试——不再统一写死「请稍后重试」。
    */
   setupVault = async (password: string): Promise<boolean> => {
     if (this.isPending) {
+      return false;
+    }
+    // HTTP 访问下 crypto.subtle 不可用，整个流程必然失败：直接给出可操作的阻塞说明，不进入派生与请求
+    if (!isVaultCryptoAvailable()) {
+      this.setupError = { kind: 'insecure', message: VAULT_INSECURE_CONTEXT_MESSAGE };
       return false;
     }
     if (password.length < MIN_MASTER_PASSWORD_LENGTH) {
@@ -286,15 +298,16 @@ class VaultStore {
 
     this.isPending = true;
     this.error = null;
+    this.setupError = null;
     try {
       const salt = generateSalt(DEFAULT_KDF_PARAMS.saltBytes ?? 16);
       const kek = await deriveKek(password, salt, DEFAULT_KDF_PARAMS);
       const dek = await generateDek();
       const wrapped = await wrapDek(kek, dek);
 
-      const ok = await mainStore.setupVault(buildMetaPayload(salt, wrapped));
-      if (!ok) {
-        this.error = '设置主密码失败，请稍后重试';
+      const failure = await mainStore.setupVault(buildMetaPayload(salt, wrapped));
+      if (failure !== null) {
+        this.setupError = failure;
         return false;
       }
 
@@ -317,7 +330,8 @@ class VaultStore {
       this.lastUnlockAt = Date.now();
       return true;
     } catch {
-      this.error = '设置主密码失败，请稍后重试';
+      // 本地 WebCrypto 调用失败（浏览器限制 / 内存不足等），给出可重试的具体说明
+      this.setupError = { kind: 'server', message: '本地加密初始化失败，请刷新页面后重试' };
       return false;
     } finally {
       this.isPending = false;

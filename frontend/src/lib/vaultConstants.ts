@@ -49,3 +49,11 @@ export const GCM_IV_BYTES = 12;
 
 /** 主密码最小长度（PRD §7.1） */
 export const MIN_MASTER_PASSWORD_LENGTH = 12;
+
+/**
+ * 非安全上下文（HTTP 访问）下设置主密码的阻塞说明（refinements-v0.1.2 §4.3）。
+ * `crypto.subtle` 只在 HTTPS / localhost 可用，文案必须直接说明原因与解法，
+ * 不能落到「设置主密码失败，请稍后重试」这类无法归因的兜底文案。
+ */
+export const VAULT_INSECURE_CONTEXT_MESSAGE =
+  '当前为 HTTP 访问，浏览器禁用了加密 API，无法设置主密码。请改用 HTTPS 打开本页面后再试。';

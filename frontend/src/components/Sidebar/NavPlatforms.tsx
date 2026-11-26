@@ -65,9 +65,15 @@ export const NavPlatforms = observer(() => {
     }
   };
 
+  // 账号库未初始化（refinements-v0.1.2 §4.3）：store.accounts 可能残留重置前的旧数据，
+  // 必须优先展示提示，不能把历史平台当成可用筛选
+  const isUninitialized = vault.initialized === false;
+
   return (
     <SidebarSection label={MODULES.accounts.sectionLabel}>
-      {platformCounts.length > 0 ? (
+      {isUninitialized ? (
+        <p className="text-muted-foreground px-2 text-xs">账号库尚未初始化</p>
+      ) : platformCounts.length > 0 ? (
         <SidebarMenu>
           {platformCounts.map(({ name, count }) => {
             // 三点菜单里可把品牌色点改成调色板颜色（纯视觉偏好，存 localStorage）

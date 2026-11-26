@@ -27,6 +27,16 @@ const TOTP_DEFAULT_WINDOW = 1;
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
+/**
+ * 当前环境能否使用 WebCrypto（refinements-v0.1.2 §4.3）。
+ *
+ * `crypto.subtle` 只在安全上下文（HTTPS / localhost）存在，HTTP 访问时整个账号库的
+ * 加解密都会失败。判定同时要求 `window.isSecureContext`，避免个别浏览器保留 subtle
+ * 却拒绝调用；设置主密码入口据此直接进入阻塞态，而不是提交后才报笼统失败。
+ */
+export const isVaultCryptoAvailable = (): boolean =>
+  typeof window !== 'undefined' && window.isSecureContext && Boolean(crypto.subtle);
+
 /** 解密失败统一文案：不暴露 GCM 校验、AAD 不匹配等技术细节（PRD §7.1 备注） */
 const DECRYPT_FAILED_MESSAGE = '无法解密该字段，请检查备份或重新保存';
 /** 解开 wrapped_dek 失败：只会发生在主密码错误或密文损坏两种情况下，不区分提示 */

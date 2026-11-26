@@ -129,6 +129,23 @@ export type SkillInstallTaskType = {
 };
 
 /* ---------------------------------------------------------------------------
+ * 待办（PRD docs/prd/todo.md §6.2 / §6.3）
+ * 与后端 Utils\TodoPayload::formatTodo() 白名单出参一一对应：done 为布尔（库内 0/1），
+ * done_at 未完成时为 null，三个时间列都是服务端生成的 'Y-m-d H:i:s' 字符串。
+ * ------------------------------------------------------------------------- */
+
+export type TodoType = {
+  id: number;
+  text: string;
+  done: boolean;
+  created_at: string;
+  /** 完成时间：done=false 时为 null（PATCH 取消完成会由服务端置回 NULL） */
+  done_at: string | null;
+  /** 后端出参同样带该列，前端只做透传，不参与展示与排序 */
+  updated_at: string | null;
+};
+
+/* ---------------------------------------------------------------------------
  * 账号库（PRD docs/prd/account-vault.md §6 / §8）
  * 说明：所有密文字段以 Base64 字符串在前后端间传输，落库为 BLOB；
  * 前端解密后仅驻留内存，绝不写入 localStorage / sessionStorage / MobX observable。

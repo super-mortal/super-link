@@ -39,6 +39,7 @@ import {
   TagFilterType,
   TagsObjectType,
   TagType,
+  TodoType,
   UpdatePasswordType,
   UpdateUsernameType,
   UserType,
@@ -117,6 +118,16 @@ class MainStore {
    * 打开设置对话框时拉取，保存后以响应刷新；null 表示尚未加载。
    */
   networkSettings: NetworkSettingsType | null = null;
+
+  /* ----------------------------- 待办（PRD docs/prd/todo.md §6.3，模块隔离） ----------------------------- */
+  /**
+   * 待办列表：独立集合，与书签 / Skill / 账号库 / 服务器完全隔离。
+   * 后端全量返回（首版不分页、不分段），分段 / 搜索 / 侧栏筛选都在前端做。
+   */
+  todos: TodoType[] = [];
+  todosLoading = false;
+  /** 侧栏第二区筛选：null 默认（未完成 + 已完成），open / done 只可看单一集合 */
+  todoFilter: 'open' | 'done' | null = null;
 
   /* ----------------------------- 账号库（PRD §5.1.1 模块隔离） ----------------------------- */
   /**
@@ -680,6 +691,108 @@ class MainStore {
     }
 
     return (response?.data ?? null) as SkillDetailType | null;
+  };
+
+  /* ----------------------------- 待办数据（PRD docs/prd/todo.md §6.2 / §6.3） ----------------------------- */
+
+  /**
+   * 待办列表（GET /api/todos）：data() 裸数组，按 created_at DESC 全量返回。
+   * 失败时保留上一次的数据（不清空已有列表），只由 runRequest 弹错误 toast。
+   */
+  fetchTodos = async (): Promise<TodoType[] | null> => {
+    this.todosLoading = true;
+
+    try {
+      const data = await this.runRequest(API_ENDPOINTS.todos.list, 'GET', {}, '获取待办失败');
+
+      if (data === null) {
+        return null;
+      }
+
+      const todos = (Array.isArray(data) ? data : []) as TodoType[];
+      this.todos = todos;
+
+      return todos;
+    } finally {
+      this.todosLoading = false;
+    }
+  };
+
+  /**
+   * 新增待办（POST /api/todos）：服务端返回完整行（含 created_at），
+   * 直接 unshift 到顶部即可与「最新在上」一致，不整表重拉。
+   */
+  createTodo = async (text: string): Promise<TodoType | null> => {
+    const response = await this.runRequest(API_ENDPOINTS.todos.create, 'POST', { text }, '添加待办失败');
+
+    if (response === null) {
+      return null;
+    }
+
+    const todo = (response?.data?.todo ?? null) as TodoType | null;
+    if (todo === null) {
+      return null;
+    }
+
+    this.todos = [todo, ...this.todos];
+
+    return todo;
+  };
+
+  /**
+   * 切换完成状态（PATCH /api/todos，只传 { id, done }，不支持改文字）。
+   * 乐观更新 + 失败回滚：勾选要即时反馈（行立刻移入 / 移出已完成区），
+   * 但请求失败时不能留下「看起来已完成、库里没有」的残留，因此整体还原上一次数组。
+   * 成功后用服务端返回的行就地替换，确保 done_at / updated_at 以服务端为准。
+   * 勾选完成刻意不弹成功 toast（PRD §5.5：行消失 + 计数变化即为反馈）。
+   */
+  updateTodo = async (id: number, done: boolean): Promise<boolean> => {
+    const previous = this.todos;
+    this.todos = this.todos.map((todo) => (todo.id === id ? { ...todo, done } : todo));
+
+    const response = await this.runRequest(API_ENDPOINTS.todos.update, 'PATCH', { id, done }, '更新待办失败', true);
+
+    if (response === null) {
+      this.todos = previous;
+      return false;
+    }
+
+    const todo = (response?.data?.todo ?? null) as TodoType | null;
+    if (todo !== null) {
+      this.todos = this.todos.map((item) => (item.id === todo.id ? todo : item));
+    }
+
+    return true;
+  };
+
+  /** 删除单条待办（POST /api/todos/delete，id 走请求体）：先本地移除，失败回滚 */
+  deleteTodo = async (id: number): Promise<boolean> => {
+    const previous = this.todos;
+    this.todos = this.todos.filter((todo) => todo.id !== id);
+
+    const response = await this.runRequest(API_ENDPOINTS.todos.delete, 'POST', { id }, '删除待办失败');
+
+    if (response === null) {
+      this.todos = previous;
+      return false;
+    }
+
+    return true;
+  };
+
+  /** 清除已完成（POST /api/todos/clear-done）：先本地过滤掉 done 行，失败回滚 */
+  clearDoneTodos = async (): Promise<boolean> => {
+    const previous = this.todos;
+    this.todos = this.todos.filter((todo) => !todo.done);
+
+    const response = await this.runRequest(API_ENDPOINTS.todos.clearDone, 'POST', {}, '清除已完成待办失败');
+
+    if (response === null) {
+      this.todos = previous;
+      return false;
+    }
+
+    return true;
   };
 
   /* ----------------------------- 账号库数据（PRD §8.2） ----------------------------- */

@@ -74,6 +74,20 @@ export const API_ENDPOINTS = {
       delete: `${API_BASE}/accounts/authorizations/delete`,
     },
   },
+  /**
+   * 待办（PRD docs/prd/todo.md §6.2）：GET 返回 data() 裸数组，写操作走 success 包裹；
+   * Router 无路径参数，删除 / 清零完成都用 POST + 子路径，id 走请求体。
+   */
+  todos: {
+    list: `${API_BASE}/todos`,
+    create: `${API_BASE}/todos`,
+    /** PATCH /api/todos：{ id, done }，只切换完成状态（不支持改文字） */
+    update: `${API_BASE}/todos`,
+    /** POST /api/todos/delete：body { id } */
+    delete: `${API_BASE}/todos/delete`,
+    /** POST /api/todos/clear-done：无入参，返回 { deleted } */
+    clearDone: `${API_BASE}/todos/clear-done`,
+  },
   setup: {
     setup: `${API_BASE}/setup/database`,
   },

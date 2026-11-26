@@ -111,6 +111,37 @@ class AccountPayload
 	}
 
 	/**
+	 * 解析账号分组 id（重命名 / 删除共用，refinements-v0.1.2 §3.2）
+	 *
+	 * 与 parseId() 同套路：格式非法与不存在都返回 404「分组不存在」，
+	 * 不让调用方从错误形态区分「参数写错」和「资源不存在」。
+	 */
+	public static function parseGroupId($raw): int
+	{
+		if (!is_int($raw) && !is_string($raw)) {
+			throw new NotFoundException('分组不存在');
+		}
+
+		$raw = trim((string)$raw);
+
+		if ('' === $raw || !ctype_digit($raw) || (int)$raw <= 0) {
+			throw new NotFoundException('分组不存在');
+		}
+
+		return (int)$raw;
+	}
+
+	/**
+	 * 解析账号分组名称（新增 / 重命名共用）：trim 后非空，长度上限与名称字段一致
+	 *
+	 * 重名校验留在控制器（Repository::getAccountGroupByName），这里只做格式校验。
+	 */
+	public static function parseGroupName($raw): string
+	{
+		return self::requiredText(['name' => $raw], 'name', '分组名称', self::MAX_NAME_LENGTH);
+	}
+
+	/**
 	 * 解析新建账号的请求体，返回可直接交给 Repository::createAccount() 的字段
 	 *
 	 * 返回值里密文列是二进制（已 base64 解码），可直接按 PARAM_LOB 落库。
@@ -378,6 +409,22 @@ class AccountPayload
 			'created_at' => $row['created_at'] ?? null,
 			'updated_at' => $row['updated_at'] ?? null,
 			'secrets' => self::formatSecrets($row),
+		];
+	}
+
+	/**
+	 * 账号分组行 → API 输出结构（refinements-v0.1.2 §3.2）
+	 *
+	 * count 缺省为 0：不带计数的查询（如 getAccountGroupById）回读的行没有该列，
+	 * 调用方需要准确计数时应传入 getAccountGroupsWithCounts() 的结果。
+	 */
+	public static function formatAccountGroup(array $row): array
+	{
+		return [
+			'id' => (int)$row['id'],
+			'name' => (string)($row['name'] ?? ''),
+			'sort' => (int)($row['sort'] ?? 0),
+			'count' => (int)($row['count'] ?? 0),
 		];
 	}
 

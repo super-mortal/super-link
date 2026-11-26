@@ -1,5 +1,9 @@
 <?php
 
+use Controllers\AccountGroupsDeleteController;
+use Controllers\AccountGroupsGetController;
+use Controllers\AccountGroupsPatchController;
+use Controllers\AccountGroupsPostController;
 use Controllers\AccountsAuthorizationsCreateController;
 use Controllers\AccountsAuthorizationsDeleteController;
 use Controllers\AccountsAuthorizationsUpdateController;
@@ -213,6 +217,20 @@ return [
 				'delete' => [
 					'POST' => AccountsAuthorizationsDeleteController::class,
 				],
+			],
+		],
+		// 账号分组字典 CRUD（refinements-v0.1.2 §3.2）：列表 / 新增 / 重命名挂在
+		// /api/account-groups，删除走 /api/account-groups/delete（POST，与其它资源
+		// 的删除端点一致）；id 一律请求体传递（Router 无路径参数）。四个端点均为
+		// 用户态，凭会话认证并沿用账号库「未初始化 / 未解锁」判定（409 请先设置主密码）
+		'account-groups' => [
+			'/' => [
+				'GET' => AccountGroupsGetController::class,
+				'POST' => AccountGroupsPostController::class,
+				'PATCH' => AccountGroupsPatchController::class,
+			],
+			'delete' => [
+				'POST' => AccountGroupsDeleteController::class,
 			],
 		],
 		// 服务器监控（PRD docs/prd/server.md）：用户态管理接口（会话认证）。

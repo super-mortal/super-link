@@ -110,9 +110,11 @@ export const AppSidebar = observer(({ ...props }: AppSidebarProps) => {
   }, [isAccountsRoute, vault.initialized, store]);
 
   // 服务器分组计数与列表数据：进入服务器路由时拉一次（与账号库平台计数同款处理）；
+  // 同时拉分组字典，侧栏按 sort 顺序渲染、为 0 的分组也展示（refinements-v0.1.2 §3.3），
   // 沿用 store.serverListParams 里保留的筛选条件，离开再返回不丢失
   React.useEffect(() => {
     if (isServersRoute) {
+      void store.fetchServerGroups();
       void store.fetchServers(store.serverListParams);
     }
   }, [isServersRoute, store]);

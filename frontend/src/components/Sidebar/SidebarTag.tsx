@@ -43,7 +43,6 @@ import { TagSelect } from '@/components/EditItem/TagSelect.tsx';
 
 const TagItem = ({
   tag,
-  highlightText,
   prependedNode = null,
   childTags = null,
   itemCount,
@@ -52,7 +51,6 @@ const TagItem = ({
   className,
 }: {
   tag: TagType;
-  highlightText: string | null;
   prependedNode?: React.ReactNode;
   childTags?: React.ReactNode;
   itemCount: number;
@@ -108,17 +106,7 @@ const TagItem = ({
           ></span>
 
           <span title={tag.title} className={cn('line-clamp-1 break-all', prependedNode && 'font-medium')}>
-            {highlightText !== null
-              ? tag.title.split(new RegExp(`(${highlightText})`, 'gi')).map((part, i) =>
-                  part.toLowerCase() === highlightText.toLowerCase() ? (
-                    <mark key={i} className="rounded-sm bg-yellow-200 px-0.5 dark:bg-yellow-800">
-                      {part}
-                    </mark>
-                  ) : (
-                    part
-                  )
-                )
-              : tag.title}
+            {tag.title}
           </span>
           {tag.description && (
             <Tooltip>
@@ -359,8 +347,6 @@ export function SidebarTag({
   itemCount,
   isTagSelected,
   isChildTagSelected,
-  childTagsMatchSearch,
-  highlightText,
   depth = 0,
 }: {
   tag: TagType;
@@ -368,12 +354,10 @@ export function SidebarTag({
   itemCount: number;
   isTagSelected: boolean;
   isChildTagSelected: boolean;
-  childTagsMatchSearch: boolean;
-  highlightText: string | null;
   /** 0 = 一级标签，每往下一级 +1；用于压缩缩进与子列表分隔线（PRD O-10） */
   depth?: number;
 }) {
-  const [isCollapsibleOpen, setIsCollapsibleOpen] = React.useState(isChildTagSelected || childTagsMatchSearch);
+  const [isCollapsibleOpen, setIsCollapsibleOpen] = React.useState(isChildTagSelected);
 
   React.useEffect(() => {
     if (isChildTagSelected !== true || isChildTagSelected === isCollapsibleOpen) {
@@ -382,14 +366,6 @@ export function SidebarTag({
     setIsCollapsibleOpen(isChildTagSelected);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isChildTagSelected]);
-
-  React.useEffect(() => {
-    if (childTagsMatchSearch !== true || childTagsMatchSearch === isCollapsibleOpen) {
-      return;
-    }
-    setIsCollapsibleOpen(childTagsMatchSearch);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [childTagsMatchSearch]);
 
   const hasChildTags = renderedChildTags.length > 0;
 
@@ -400,7 +376,6 @@ export function SidebarTag({
         depth={depth}
         itemCount={itemCount}
         isTagSelected={isTagSelected}
-        highlightText={highlightText}
         className={cn(isChildTagSelected && !isCollapsibleOpen ? 'bg-primary/10' : '', 'gap-0')}
         prependedNode={
           <div
@@ -433,12 +408,6 @@ export function SidebarTag({
       />
     </Collapsible>
   ) : (
-    <TagItem
-      tag={tag}
-      depth={depth}
-      itemCount={itemCount}
-      highlightText={highlightText}
-      isTagSelected={isTagSelected}
-    />
+    <TagItem tag={tag} depth={depth} itemCount={itemCount} isTagSelected={isTagSelected} />
   );
 }

@@ -12,10 +12,7 @@ export const SIDEBAR_SECTION_GROUP_CLASS = 'border-sidebar-border mt-1 gap-2 bor
 /** §2.1 头部：固定 2rem 高，左侧标题 + 右侧动作区 */
 export const SIDEBAR_SECTION_HEADER_CLASS = 'me-1 flex h-8 items-center gap-2';
 
-/** §2.1 搜索态：输入框 2rem，与头部同高，替换头部时列表起始位置不变 */
-export const SIDEBAR_SECTION_SEARCH_CLASS = 'relative flex h-8 w-full items-center';
-
-/** §2.1 动作位：搜索 / 更多各 1.25rem；缺失的动作渲染同尺寸不可见占位，保证位置稳定 */
+/** §2.1 动作位：1.25rem；「更多」缺失时渲染同尺寸不可见占位，保证位置稳定 */
 export const SIDEBAR_SECTION_ACTION_CLASS =
   'flex size-5 flex-none items-center justify-center rounded-md text-sidebar-foreground outline-hidden transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring [&>svg]:size-4 [&>svg]:shrink-0';
 

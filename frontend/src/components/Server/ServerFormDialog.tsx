@@ -13,7 +13,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog.tsx';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form.tsx';
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form.tsx';
 import { Input } from '@/components/ui/input.tsx';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select.tsx';
 import { Spinner } from '@/components/ui/spinner.tsx';
@@ -234,6 +242,8 @@ export const ServerFormDialog = observer(({ open, onOpenChange, server = null, o
                           ))}
                         </SelectContent>
                       </Select>
+                      {/* 分组只在设置页维护（refinements-v0.1.2 §3.3）：这里只做选择，不提供新建入口 */}
+                      <FormDescription>分组在『设置 → 分组』里维护</FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}

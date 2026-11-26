@@ -169,7 +169,7 @@ export const BasicInfoFields = ({
     <AccountFormField
       label="分组"
       htmlFor="account-group"
-      hint={groupOptions.length === 0 ? '暂无可用分组（分组从已有账号派生）' : undefined}
+      hint={groupOptions.length === 0 ? '暂无分组，请在『设置 → 分组』里添加' : '分组在『设置 → 分组』里维护'}
     >
       <Select
         value={values.groupId}

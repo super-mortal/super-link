@@ -99,6 +99,9 @@ class VaultImportController implements ControllerInterface
 			'skipped_accounts' => $result['skipped_accounts'],
 			'authorizations' => $result['authorizations'],
 			'skipped_authorizations' => $result['skipped_authorizations'],
+			// 本地不存在的分组名已自动建组（refinements-v0.1.2 §3.4），与服务器恢复
+			// 响应同名字段同口径，前端恢复结果态直接复用
+			'groups_created' => $result['groups_created'],
 		]);
 	}
 

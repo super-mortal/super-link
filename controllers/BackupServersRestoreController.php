@@ -19,9 +19,10 @@ use function Framework\success;
  *
  * 恢复把备份里的 token_hash / token_salt 原样写回 servers 表（Hub 地址不变时
  * agent 无需重装），因此备份文件等同凭据材料：
- *   - 响应只回 { dry_run, mode, note, removed, summary, items }（预检按 refinements.md
- *     §4.5 扁平化为 { new, updated, same, skipped, failed, ... }），逐条只含
- *     name / status / message，绝不回显哈希与盐（用户态白名单在 ServerPayload）；
+ *   - 响应只回 { dry_run, mode, note, removed, summary, groups_created, items }
+ *     （预检按 refinements.md §4.5 扁平化为 { new, updated, same, skipped, failed, ... }），
+ *     逐条只含 name / status / message，绝不回显哈希与盐（用户态白名单在 ServerPayload）；
+ *     groups_created 为本次（或将）自动新建的字典外分组数（refinements-v0.1.2 §3.4）；
  *   - 本控制器不写日志，错误信息也不带凭据字段；
  *   - 依赖框架默认登录态与 CSRF 校验，不加入任何认证 / CSRF / migrate 跳过名单。
  *

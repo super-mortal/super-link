@@ -161,9 +161,11 @@ class ServerBackupRestorer
 	 * @param string $mode    merge（默认，同名跳过）/ overwrite（同名更新 + 清理备份外）
 	 * @param bool   $dry_run true 只返回分类与逐条预览，不产生任何副作用
 	 *
-	 * 返回：{ dry_run, mode, note, removed, summary, items }
+	 * 返回：{ dry_run, mode, note, removed, summary, groups_created, items }
 	 * summary：{ new, updated, same, skipped, failed }（updated 预检恒为 0）；
-	 * removed：删除（或将删除）的备份外服务器数量，merge 恒为 0。
+	 * removed：删除（或将删除）的备份外服务器数量，merge 恒为 0；
+	 * groups_created：字典外的分组名本次（或将）自动新建的数量，无新增时为 0。
+	 * 与账号库导入同名字段同口径（dev-spec §4.1），前端恢复结果态统一消费。
 	 */
 	public function restore(array $payload, string $mode = self::MODE_MERGE, bool $dry_run = false): array
 	{
@@ -189,14 +191,20 @@ class ServerBackupRestorer
 	 *   - 同名 + merge → same（跳过，不覆盖现有配置）；
 	 *   - 同名 + overwrite → same（执行阶段记为 updated）；
 	 *   - 文件内同名重复 → 第一条后按 skipped。
+	 *
+	 * groups_created 只统计「真正会写库的条目」用到的字典外分组名：合并模式为
+	 * 将新建的服务器，覆盖模式还包括将更新的同名服务器；被跳过 / 重复的条目
+	 * 不建组，与 execute() 的实际行为保持一致，预检数字才不会被高估。
 	 */
 	private function preview(array $servers, string $mode): array
 	{
 		$existing = $this->existingServersByName();
+		$group_names = $this->existingGroupNames();
 
 		$counts = ['new' => 0, 'updated' => 0, 'same' => 0, 'skipped' => 0, 'failed' => 0];
 		$items = [];
 		$seen = [];
+		$new_groups = [];
 
 		foreach ($servers as $server) {
 			$name = $server['name'];
@@ -210,11 +218,16 @@ class ServerBackupRestorer
 
 			if (!isset($existing[$name])) {
 				$counts['new']++;
+				$this->collectMissingGroup((string)$server['group_name'], $group_names, $new_groups);
 				$items[] = ['name' => $name, 'status' => 'new', 'message' => '将新建服务器（沿用备份中的 Token 凭据）'];
 				continue;
 			}
 
 			$counts['same']++;
+			// 覆盖模式同名服务器会按备份更新分组，字典外分组同样要新建
+			if (self::MODE_OVERWRITE === $mode) {
+				$this->collectMissingGroup((string)$server['group_name'], $group_names, $new_groups);
+			}
 			$items[] = [
 				'name' => $name,
 				'status' => 'same',
@@ -237,6 +250,7 @@ class ServerBackupRestorer
 			'note' => $note,
 			'removed' => $removed,
 			'summary' => $counts,
+			'groups_created' => count($new_groups),
 			'items' => $items,
 		];
 	}
@@ -251,11 +265,15 @@ class ServerBackupRestorer
 	private function execute(array $servers, string $mode): array
 	{
 		$existing = $this->existingServersByName();
+		// 分组字典（名称集合）：写库前逐个补建字典外分组（refinements-v0.1.2 §3.4），
+		// 新建后同步进这个集合，同一分组名在一次恢复里只建一次
+		$group_names = $this->existingGroupNames();
 
 		$counts = ['new' => 0, 'updated' => 0, 'same' => 0, 'skipped' => 0, 'failed' => 0];
 		$items = [];
 		$seen = [];
 		$removed = 0;
+		$groups_created = 0;
 
 		// 整个执行阶段一个事务：写配置 + 写 Token 材料 + 清理备份外服务器必须同生共死。
 		// deleteServer() 检测到已在外层事务里时会跳过自己的 begin / commit，
@@ -281,6 +299,11 @@ class ServerBackupRestorer
 					}
 
 					$id = (int)$existing[$name][0];
+					// 先补建分组再更新：servers.group_name 是文本列，字典缺行时
+					// 侧栏分组计数会把该服务器算丢
+					if ($this->ensureServerGroup((string)$server['group_name'], $group_names)) {
+						$groups_created++;
+					}
 					$this->repository->updateServer($id, [
 						'note' => $server['note'],
 						'group_name' => $server['group_name'],
@@ -293,6 +316,9 @@ class ServerBackupRestorer
 					continue;
 				}
 
+				if ($this->ensureServerGroup((string)$server['group_name'], $group_names)) {
+					$groups_created++;
+				}
 				$id = $this->repository->createServer([
 					'name' => $name,
 					'note' => $server['note'],
@@ -346,6 +372,7 @@ class ServerBackupRestorer
 			'note' => $note,
 			'removed' => $removed,
 			'summary' => $counts,
+			'groups_created' => $groups_created,
 			'items' => $items,
 		];
 	}
@@ -367,6 +394,57 @@ class ServerBackupRestorer
 			$map[(string)$row['name']][] = (int)$row['id'];
 		}
 		return $map;
+	}
+
+	/**
+	 * 现有分组字典的名称列表（refinements-v0.1.2 §3.4 自动建组的判断依据）
+	 *
+	 * 只取名称：恢复只按名称写 servers.group_name，分组 id 是内部列、不参与恢复
+	 * （与 parse() 忽略 group_id 的口径一致）。
+	 *
+	 * @return string[]
+	 */
+	private function existingGroupNames(): array
+	{
+		$names = [];
+		foreach ($this->repository->getServerGroups() as $group) {
+			$names[] = (string)$group['name'];
+		}
+		return $names;
+	}
+
+	/**
+	 * 预检用：记录某个备份分组名是否需要新建（只记账，不写库）
+	 *
+	 * 空分组名表示备份里没有指定分组，写库时由 createServer() 回落字典默认值，
+	 * 不需要建组；已在字典或已计入 $new_groups 的名称不重复计数。
+	 */
+	private function collectMissingGroup(string $group_name, array $group_names, array &$new_groups): void
+	{
+		if ('' === $group_name || in_array($group_name, $group_names, true) || isset($new_groups[$group_name])) {
+			return;
+		}
+
+		$new_groups[$group_name] = true;
+	}
+
+	/**
+	 * 执行用：字典外分组名按需建组，返回是否真的新建
+	 *
+	 * 走 Repository::createServerGroup()（sort = MAX(sort) + 1，追加到字典末尾），
+	 * 与设置页添加分组同一入口，排序值稳定且不依赖名字哈希。新建后同步进
+	 * $group_names，避免同一分组名在一次恢复里重复建组撞 UNIQUE 约束。
+	 */
+	private function ensureServerGroup(string $group_name, array &$group_names): bool
+	{
+		if ('' === $group_name || in_array($group_name, $group_names, true)) {
+			return false;
+		}
+
+		$this->repository->createServerGroup($group_name);
+		$group_names[] = $group_name;
+
+		return true;
 	}
 
 	/**

@@ -1078,7 +1078,7 @@ class Repository
 
 	/**
 	 * 导入加密备份（PRD §8.1），返回 ['accounts' => 新导入账号数, 'skipped_accounts' => 跳过数,
-	 * 'authorizations' => 导入授权数]。
+	 * 'authorizations' => 导入授权数, 'groups_created' => 自动新建分组数]。
 	 *
 	 * $backup 为 Utils\VaultBackupPayload::parse() 的返回值（meta + accounts，密文已是二进制）。
 	 *
@@ -1122,6 +1122,8 @@ class Repository
 			foreach ($this->getAccountGroups() as $group) {
 				$group_ids_by_name[(string)$group['name']] = (int)$group['id'];
 			}
+			// 本轮自动新建的分组数，随导入结果返回（refinements-v0.1.2 §3.4 / dev-spec §4.1）
+			$groups_created = 0;
 
 			// 第一遍：插入账号，建立「文件旧 id -> 本地 id」映射
 			$id_map = [];
@@ -1141,11 +1143,18 @@ class Repository
 					continue;
 				}
 
-				// 分组按名称解析；文件里的分组名本地不存在时置空（本项目没有自建分组接口，
-				// 分组只有种子数据，静默建组会绕过接口约定，置空只是失去分组信息）
-				$account['group_id'] = null === $account['group']
-					? null
-					: ($group_ids_by_name[$account['group']] ?? null);
+				// 分组按名称解析；本地不存在的分组名自动建组（refinements-v0.1.2 §3.4：
+				// 跨设备 / 旧备份不应因分组字典缺项而丢分组或 400）。建组走
+				// createAccountGroup()（sort 追加到末尾），同一名称在本文件内只建一次
+				$account['group_id'] = null;
+				if (null !== $account['group']) {
+					$group_name = (string)$account['group'];
+					if (!isset($group_ids_by_name[$group_name])) {
+						$group_ids_by_name[$group_name] = $this->createAccountGroup($group_name);
+						$groups_created++;
+					}
+					$account['group_id'] = $group_ids_by_name[$group_name];
+				}
 				unset($account['group']);
 
 				$new_id = $this->createAccount($account, 'replace' === $mode ? $old_id : null);
@@ -1233,6 +1242,7 @@ class Repository
 				'skipped_accounts' => $skipped,
 				'authorizations' => $authorization_count,
 				'skipped_authorizations' => $skipped_authorizations,
+				'groups_created' => $groups_created,
 			];
 		} catch (Exception $e) {
 			if ($this->pdo->inTransaction()) {

@@ -2,9 +2,9 @@
 
 | 项目 | 内容 |
 | --- | --- |
-| 版本 | 1.0 |
-| 日期 | 2026-11-16 |
-| 状态 | 讨论中 |
+| 版本 | 1.3 |
+| 日期 | 2026-11-26 |
+| 状态 | 已实施（分组字典与相关界面随 v0.1.2 候选落地） |
 | 关联文档 | [账号库 PRD](account-vault.md)、[优化 PRD](optimization.md) |
 | 关联原型 | `mockups/index.html`（本地纯 HTML 交互原型，按 `.gitignore` 不入库） |
 | 参考项目 | [henrygd/beszel](https://github.com/henrygd/beszel)（Hub + Agent 长连接架构、信息架构与视觉参考；本地源码副本 `docs/beszel/`，不入库） |
@@ -68,7 +68,7 @@ super-link 的定位是「自托管的个人数据管理工具」，服务器状
 | D7 | 无主动告警通知 | 仅在页面内展示在线 / 离线 / 异常状态 |
 | D8 | 被监控端首版仅支持 Linux | 数据源为 `/proc` 与标准命令；Windows / macOS 列入候选 |
 | D9 | 图表库用 recharts | 实现阶段引入 recharts；原型中的手绘 SVG 仅为演示，不代表最终实现 |
-| D10 | 首版支持简单分组 | 分组固定为「家庭 / 公网 / 公司 / 归档」四项（与账号库分组同一处理方式），侧栏按分组筛选并显示计数 |
+| D10 | 分组为可管理的动态字典 | 内置「家庭 / 公网 / 公司 / 归档」四个种子分组，支持新增 / 重命名 / 删除（统一在「设置 → 分组」维护）；非空分组禁止删除（提示组内服务器数量），至少保留一个分组。`servers.group_name` 仍存名称，备份与 agent 协议零改动。CRUD 端点为 `GET/POST/PATCH /api/servers/groups` 与 `POST /api/servers/groups/delete`；列表 `groups` 计数按字典输出全部名称（为 0 也返回），新增 / 编辑只接受字典内名称（缺省取 sort 最小分组）；备份恢复遇到字典外分组自动建组并回传 `groups_created`。详见 [refinements-v0.1.2.md](refinements-v0.1.2.md) |
 | D11 | 连接模式为长连接 | agent 常驻并主动保持到 Hub 的连接；Hub 每 5 分钟经连接下发采集指令；连接断开即离线（秒级）；PHP + Apache 约束下以长轮询实现该语义，不引入独立 WebSocket 服务进程 |
 | D12 | link-agent 二进制随主版本发布 | 与 super-link 同 tag（`vX.Y.Z`）产出：CI 同时构建 Docker 镜像与 `link-agent-linux-amd64` / `link-agent-linux-arm64`，挂同一 GitHub Release；不做独立版本线；Hub 详情页对比自身与 agent 版本，落后时提示升级（beszel 同款） |
 
@@ -76,8 +76,8 @@ super-link 的定位是「自托管的个人数据管理工具」，服务器状
 
 ### 5.1 服务器管理
 
-- **分组**：固定四项「家庭 / 公网 / 公司 / 归档」（与账号库分组同一处理方式，不参与权限）；侧栏展示分组及计数，点击筛选，与账号库的「平台」筛选行为一致。
-- **列表**：卡片式列表（beszel SystemCard 同款结构）：头部条为状态点（在线绿 / 离线红 / 已暂停灰 / 等待连接黄）+ 名称 + 分组，头部下方为系统信息行（发行版 · CPU 核数 · IP）；主体为「图标 + 标签 + 值」三列指标行——CPU / 内存 / 磁盘为行内 meter（数值 + 细条；CPU / 内存按 65 / 90 阈值变色，磁盘按 80 / 90；磁盘取用量最大挂载点，悬停展示全部分区），网络 / 运行时长 / 容器数为文本行；页脚为状态文字与最后回传时间（暂停 / 等待连接仅展示状态文字）。离线卡片指标行置灰，页脚注明数据停留时间；暂停 / 等待连接的卡片整体置灰，等待连接暂无指标数据、不展示指标行。
+- **分组**：动态字典（`server_groups` 表，内置「家庭 / 公网 / 公司 / 归档」四个种子），在「设置 → 分组」新增 / 重命名 / 删除，非空分组禁止删除、至少保留一个；模块内只做选择：侧栏按字典渲染分组及计数（为 0 的分组也展示）、点击筛选，添加 / 编辑弹窗用普通下拉并提示「分组在『设置 → 分组』里维护」（详见 [refinements-v0.1.2.md](refinements-v0.1.2.md)）。
+- **列表**：卡片式列表（beszel SystemCard 同款结构）：头部条为状态点（在线绿 / 离线红 / 已暂停灰 / 等待连接黄）+ 名称，头部下方为系统信息行（发行版 · CPU 核数 · IP）；主体为「图标 + 标签 + 值」三列指标行——CPU / 内存 / 磁盘为行内 meter（数值 + 细条；CPU / 内存按 65 / 90 阈值变色，磁盘按 80 / 90；磁盘取用量最大挂载点，悬停展示全部分区），网络 / 运行时长 / 容器数为文本行；页脚为分组 + 状态文字与最后回传时间（暂停 / 等待连接仅展示状态文字）。离线卡片指标行置灰，页脚注明数据停留时间；暂停 / 等待连接的卡片整体置灰，等待连接暂无指标数据、不展示指标行，改用占位块（图标 + 标题 + 说明 + 可点击的「查看接入指引 →」，跳转详情页接入信息卡）。
 - **新增 / 编辑**：弹窗内填写名称、备注与分组；新增提交后生成服务器与 Agent Token，并展示安装命令（含 Token 的一行 curl 命令）供一键复制。
 - **Token 重置**：服务器详情内可重新生成 Token（旧 Token 立即失效）；重置弹窗直接给出含新 Token 的完整安装命令，一键复制到被监控机执行即完成重装，无需再找历史命令。
 - **暂停 / 恢复**：可暂停某台服务器的监控（暂停期间不做离线判定，状态固定为「已暂停」，历史数据保留）。
@@ -131,7 +131,7 @@ super-link 的定位是「自托管的个人数据管理工具」，服务器状
 ### 5.5 前端页面
 
 - **路由**：`/servers`（列表）与 `/servers/:serverID`（详情），账号库式独立外壳；模块无敏感凭据，不需要解锁态。
-- **侧栏**：分组筛选（家庭 / 公网 / 公司 / 归档，带计数），点击筛选、再点取消；不设「全部」行，无选中即全部。
+- **侧栏**：分组筛选（`server_groups` 字典，按 sort 升序、为 0 的分组也展示，带计数），点击筛选、再点取消；不设「全部」行，无选中即全部。
 - **列表页**：5.1 的卡片列表 + 「添加服务器」主按钮；顶部工具栏含搜索（名称 / 备注 / IP）与排序（状态 / 名称 / CPU / 内存）。
 - **详情页**：
   - 头部：名称、分组、连接状态徽章（在线 / 离线 / 已暂停 / 等待连接）、系统信息（发行版 · CPU 核数 · IP）、开机时长与当前负载（在线时展示）、最后回传时间；
@@ -159,7 +159,8 @@ super-link 的定位是「自托管的个人数据管理工具」，服务器状
 
 **数据表**：
 
-- `servers`：`id`、`name`、`note`、`group`（家庭 / 公网 / 公司 / 归档）、`token_hash`、`token_salt`、`paused`、`last_report_at`、`created_at`、`updated_at`
+- `servers`：`id`、`name`、`note`、`group`（分组名称，库内列名 `group_name`；候选值来自 `server_groups` 字典）、`token_hash`、`token_salt`、`paused`、`last_report_at`、`created_at`、`updated_at`
+- `server_groups`：`id`、`name`（唯一）、`sort`；内置家庭 / 公网 / 公司 / 归档四个种子（空表时写入，删除后不被 migrate 复活），`migrate()` 每次把 `servers.group_name` 里字典缺失的名称回填进来
 - `server_metrics`：`id`、`server_id`、`received_at`、`cpu`、`mem_used`、`mem_total`、`mem_cached`、`swap_used`、`swap_total`、`load1`、`load5`、`load15`、`net_rx`、`net_tx`（**速率 bytes/s，agent 侧算好**）、`uptime`
 - `server_disks`：`id`、`server_id`、`received_at`、`mount`、`used`、`total`
 - `server_docker`：`id`、`server_id`、`received_at`、`container`、`cpu`、`mem_used`、`mem_limit`、`net_rx`、`net_tx`（速率 bytes/s）、`state`
@@ -174,6 +175,10 @@ super-link 的定位是「自托管的个人数据管理工具」，服务器状
 - `GET /api/servers/detail?server-id=`：详情（基本信息 + 系统信息 + 最新 Docker 快照 + 连接状态）
 - `GET /api/servers/metrics?server-id=&range=1h|6h|24h|30d`：历史序列（服务端按 range 聚合）
 - `POST /api/servers/token`：重置 Token
+- `GET /api/servers/groups`：分组字典 `{ groups: [{ id, name, sort, count }], total }`（字典内分组全部返回，为 0 也返回）
+- `POST /api/servers/groups` / `PATCH /api/servers/groups` / `POST /api/servers/groups/delete`：新增 / 重命名 / 删除分组（id 走请求体；重名 400、非空 400、至少保留一个）；重命名在同一事务内同步 `servers.group_name`
+- `GET /api/servers` 的 `groups` 计数按字典输出全部名称；`POST/PATCH /api/servers` 只接受字典内分组，新增缺省取 sort 最小的分组
+- 备份恢复：`POST /api/backup/servers/restore` 遇到字典外分组自动建组，并在预检 / 执行响应里返回 `groups_created`（自动新建分组数）
 
 **接口**（agent 态，Token 认证，跳过会话与 CSRF 中间件——按控制器类名加入 `AuthenticationMiddleware::$skip_auth_routes` 与 `CSRFMiddleware::$skipped_routes`，与 `AuthLoginController` / `AppInfoController` 现成模式一致）：
 
@@ -189,7 +194,7 @@ super-link 的定位是「自托管的个人数据管理工具」，服务器状
 4. 详情页三张图表与磁盘、Docker 数据与 `htop` / `df` / `docker stats` 肉眼一致。
 5. 30 天数据保留（retention）策略可通过模拟数据验证清理逻辑。
 6. 删除服务器后其历史数据一并删除。
-7. 侧栏分组筛选与计数正确；新增 / 编辑可设置分组。
+7. 侧栏分组筛选与计数正确（按字典渲染、为 0 也展示）；分组可在设置页新增 / 重命名 / 删除（非空拒绝、至少保留一个）；新增 / 编辑可设置分组；恢复备份时未知分组自动建组并在结果中提示新增数量。
 8. 暗色 / 亮色主题下全部新界面元素可读，无硬编码亮色。
 9. `npm run build` 全绿（前端最低验证标准）。
 
@@ -262,3 +267,4 @@ super-link 的定位是「自托管的个人数据管理工具」，服务器状
 | 1.0 | 2026-11-16 | 文档定版 1.0；命名确定：agent 二进制为 **link-agent**（服务 `link-agent.service`、配置 `/etc/link-agent/config`、产物 `link-agent-linux-amd64` / `link-agent-linux-arm64`），Hub 即 super-link 后端不另起名；**D12**：二进制随主版本同 tag 发布，不做独立版本线，详情页做 agent 版本落后提示；原型同步改名。同日审查修订：§5.1 卡片描述对齐原型（磁盘 80 / 90 阈值、置灰范围、系统信息行、空态文案）、§2 与 §5.4 移除 sparkline 残留、§5.5 状态徽章改四态并标注编辑 / 版本提示原型未覆盖、§5.1 暂停文案去除「告警」表述、§1.3 候选引用对齐 Q1 / Q5、§9 标注「参考、非需求」、签名校验移入 Q7、§7 保留策略措辞（D1–D12 未动） |
 | 1.1 | 2026-11-16 | 技术审查修订（D1–D12 未动）：修正 Docker 容器 CPU 口径（删除错误的「× 在线 CPU 数」，beszel 为 cpuDelta ÷ systemDelta × 100）、容器内存口径（usage − inactive_file）；网络口径统一为 agent 侧算速率并补 cali* / 零计数器排除与 NICS 预留；内存口径注明以 gopsutil Used 为准；磁盘排除清单封闭化（含 squashfs 与 bind mount 去重）；§6 接口按现有 Router 约定改写为查询串传参（原 `{id}` 路径参数框架不支持）、补 `success()` envelope、中间件按类名豁免、新增 `GET /content/install-agent`（顶层 content 路由，需认证豁免）；§5.2 补长轮询实现约束（45–55s 持有避开 max_execution_time、connection_aborted 每秒自检、每 Token 单连接注册表、跳过 session）；§5.6 补 Token 哈希算法（SHA-256 + salt）、无效 Token 与不存在服务器返回一致 401、单包上限与字段白名单；§5.4 清理覆盖三张表；§8 补框架适配风险 |
 | 1.2 | 2026-11-16 | **D6 执行方式定稿（选项 b）**：Token 不在详情页回看——服务端只存哈希，明文仅在添加 / 重置弹窗展示一次；详情页「接入信息」卡改示安装命令模板（占位符），重装走「重置 Token → 弹窗给完整命令」流程。同步修正术语、§5.1 重置说明、§5.5 接入信息卡描述；原型详情页移除含 Token 的安装命令与复制按钮。备注：beszel 为另一派（token 明文存 PocketBase 可随时回看），本项目选择更严的口径 |
+| 1.3 | 2026-11-26 | 分组字典落地（refinements-v0.1.2）：D10 补 CRUD 端点与字典口径；§5.1 分组与卡片布局对齐实现（分组移入页脚、等待连接占位块与「查看接入指引 →」）；§5.5 侧栏分组改字典驱动；§6 新增 `server_groups` 表、四个分组端点与恢复 `groups_created`；§7 验收补分组管理与自动建组。D1–D12 其余决策未动 |

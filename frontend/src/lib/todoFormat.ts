@@ -46,3 +46,11 @@ export const formatTodoTime = (createdAt: string | null | undefined): string => 
   const value = (createdAt ?? '').trim();
   return value.slice(0, 16);
 };
+
+/**
+ * 已完成待办按完成时间新→旧排序（PRD §5.5）。
+ * done_at 为空时（历史数据兜底）退回 created_at；两者同为 'Y-m-d H:i:s' 字符串，
+ * 可直接按字典序比较，避免浏览器时区参与二次换算。
+ */
+export const sortTodosByDoneAt = <T extends { created_at: string; done_at: string | null }>(todos: T[]): T[] =>
+  [...todos].sort((a, b) => (b.done_at ?? b.created_at).localeCompare(a.done_at ?? a.created_at));

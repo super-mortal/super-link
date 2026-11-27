@@ -3,6 +3,7 @@ import { ChevronRightIcon } from 'lucide-react';
 import { TodoRow } from '@/components/Todo/TodoRow.tsx';
 import { TodoCard } from '@/components/Todo/TodoCard.tsx';
 import { DeleteDialog } from '@/components/Table/Controls/DeleteDialog.tsx';
+import { sortTodosByDoneAt } from '@/lib/todoFormat.ts';
 import { cn } from '@/lib/utils.ts';
 import type { LayoutType, TodoType } from '@/lib/types.ts';
 
@@ -36,9 +37,8 @@ export const TodoDoneSection = ({ todos, layout, onToggle, onDelete, onClearDone
     return null;
   }
 
-  // 完成时间新→旧；done_at 为空（历史数据兜底）退回 created_at，
-  // 两者同为 'Y-m-d H:i:s' 字符串，可直接按字典序比较，避免时区二次换算
-  const doneTodos = [...todos].sort((a, b) => (b.done_at ?? b.created_at).localeCompare(a.done_at ?? a.created_at));
+  // 完成时间新→旧；排序口径与搜索 / 已完成筛选共用 lib/todoFormat 的 sortTodosByDoneAt
+  const doneTodos = sortTodosByDoneAt(todos);
 
   return (
     <section className="mt-1 border-t pt-1" aria-label="已完成待办">

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { ComponentType } from 'react';
-import { LayoutGrid, LayoutList, ListTodo, SearchIcon } from 'lucide-react';
-import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group.tsx';
+import { LayoutGrid, LayoutList, ListTodo, SearchIcon, X } from 'lucide-react';
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from '@/components/ui/input-group.tsx';
+import { Kbd } from '@/components/ui/kbd.tsx';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group.tsx';
 import { SidebarToggler } from '@/components/Sidebar/SidebarToggler.tsx';
 import { MODULES } from '@/lib/modules.ts';
@@ -75,6 +76,12 @@ export const TodoToolbar = ({ layout, onLayoutChange, onSearchChange }: TodoTool
         <InputGroupInput
           value={search}
           onChange={(event) => handleSearchChange(event.target.value)}
+          onKeyDown={(event) => {
+            // Esc 清空搜索：与清除按钮同一路径，恢复分段 + 折叠布局并同步清理 URL
+            if (event.key === 'Escape') {
+              handleSearchChange('');
+            }
+          }}
           name="todo-search"
           className="h-9 pl-6"
           placeholder="搜索待办..."
@@ -82,6 +89,13 @@ export const TodoToolbar = ({ layout, onLayoutChange, onSearchChange }: TodoTool
         <InputGroupAddon>
           <SearchIcon />
         </InputGroupAddon>
+        {search.length > 0 && (
+          <InputGroupAddon align="inline-end" onClick={() => handleSearchChange('')}>
+            <InputGroupButton aria-label="清除搜索">
+              <X className="mt-[1px]" /> <Kbd className="pointer-coarse:hidden">Esc</Kbd>
+            </InputGroupButton>
+          </InputGroupAddon>
+        )}
       </InputGroup>
 
       <div className="ml-auto flex items-center gap-1.5">

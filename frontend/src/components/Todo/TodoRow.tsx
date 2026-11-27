@@ -39,7 +39,7 @@ export const TodoRow = ({ todo, onToggle, onDelete }: TodoRowProps) => {
           toggle();
         }
       }}
-      className="onhover-container hover:bg-muted/30 focus-visible:outline-ring relative flex min-h-12 cursor-pointer items-center gap-3 py-2.5 pr-12 pl-3.5 transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2"
+      className="onhover-container hover:bg-muted/30 focus-visible:outline-ring relative flex min-h-12 cursor-pointer items-center gap-2.5 py-2 pr-11 pl-3 transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 sm:gap-3 sm:py-2.5 sm:pr-12 sm:pl-3.5"
     >
       <TodoCheck checked={todo.done} />
       <span
@@ -50,7 +50,8 @@ export const TodoRow = ({ todo, onToggle, onDelete }: TodoRowProps) => {
       >
         {todo.text}
       </span>
-      <span className="text-muted-foreground shrink-0 text-xs whitespace-nowrap tabular-nums">
+      {/* 移动端字号收到 11px，仍完整显示年月日时分（不截断、不省略，PRD §5.9） */}
+      <span className="text-muted-foreground shrink-0 text-[11px] whitespace-nowrap tabular-nums sm:text-xs">
         {formatTodoTime(todo.created_at)}
       </span>
       <DeleteDialog

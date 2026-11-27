@@ -38,11 +38,12 @@ export const TodoCard = ({ todo, onToggle, onDelete }: TodoCardProps) => {
           toggle();
         }
       }}
-      className="onhover-container from-muted/70 to-card hover:border-muted-foreground/40 focus-visible:outline-ring flex min-w-0 cursor-pointer flex-col gap-2 rounded-lg border bg-gradient-to-t p-3.5 transition-[box-shadow,border-color] hover:shadow-md focus-visible:outline-2 focus-visible:-outline-offset-2"
+      className="onhover-container from-muted/70 to-card hover:border-muted-foreground/40 focus-visible:outline-ring flex min-w-0 cursor-pointer flex-col gap-2 rounded-lg border bg-gradient-to-t p-3 transition-[box-shadow,border-color] hover:shadow-md focus-visible:outline-2 focus-visible:-outline-offset-2 sm:p-3.5"
     >
       <div className="flex min-h-5 items-center gap-2">
         <TodoCheck checked={todo.done} />
-        <span className="text-muted-foreground min-w-0 text-xs whitespace-nowrap tabular-nums">
+        {/* 移动端字号收到 11px，仍完整显示年月日时分（不截断、不省略，PRD §5.9） */}
+        <span className="text-muted-foreground min-w-0 text-[11px] whitespace-nowrap tabular-nums sm:text-xs">
           {formatTodoTime(todo.created_at)}
         </span>
         <DeleteDialog

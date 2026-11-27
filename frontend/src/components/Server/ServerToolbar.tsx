@@ -1,6 +1,7 @@
 import type { KeyboardEvent } from 'react';
-import { ArrowDownUp, Check, PlusIcon, SearchIcon, Server, X } from 'lucide-react';
+import { ArrowDownUp, Check, LayoutGrid, LayoutList, PlusIcon, SearchIcon, Server, X } from 'lucide-react';
 import { Button } from '@/components/ui/button.tsx';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group.tsx';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,12 +15,20 @@ import { SidebarToggler } from '@/components/Sidebar/SidebarToggler.tsx';
 import { SERVER_SORTS } from '@/lib/serverFormat.ts';
 import { cn } from '@/lib/utils.ts';
 
+/**
+ * 列表视图档位（决策 D13）：卡片 / 列表两档，默认卡片。
+ * 页面 state 持有，不做 URL 同步、不写 localStorage（视图不跨会话记忆）。
+ */
+export type ServerListViewType = 'cards' | 'list';
+
 type ServerToolbarProps = {
   search: string;
   onSearchChange: (value: string) => void;
   /** 「字段-方向」合一写法（SERVER_SORTS 的 value），拆分见 parseServerSort */
   sortKey: string;
   onSortChange: (value: string) => void;
+  view: ServerListViewType;
+  onViewChange: (view: ServerListViewType) => void;
   onAdd: () => void;
 };
 
@@ -30,7 +39,15 @@ type ServerToolbarProps = {
  * 不必每敲一个字都发一次请求；Esc 清空是明确修复点——早期实现只清了输入框、
  * 没清筛选条件，出现「框是空的、列表仍处于过滤中」的观感。
  */
-export const ServerToolbar = ({ search, onSearchChange, sortKey, onSortChange, onAdd }: ServerToolbarProps) => {
+export const ServerToolbar = ({
+  search,
+  onSearchChange,
+  sortKey,
+  onSortChange,
+  view,
+  onViewChange,
+  onAdd,
+}: ServerToolbarProps) => {
   const handleSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Escape') {
       onSearchChange('');
@@ -86,6 +103,21 @@ export const ServerToolbar = ({ search, onSearchChange, sortKey, onSortChange, o
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
+
+        {/* 视图切换（决策 D13）：卡片 / 列表，与排序同在右侧、添加按钮之前 */}
+        <ToggleGroup
+          variant="outline"
+          type="single"
+          value={view}
+          onValueChange={(value: ServerListViewType) => value && onViewChange(value)}
+        >
+          <ToggleGroupItem value="cards" title="卡片视图" aria-label="卡片视图">
+            <LayoutGrid />
+          </ToggleGroupItem>
+          <ToggleGroupItem value="list" title="列表视图" aria-label="列表视图">
+            <LayoutList />
+          </ToggleGroupItem>
+        </ToggleGroup>
 
         {/* onAdd 打开 ServerFormDialog（task15）：新建成功后同窗展示 Token 明文与安装命令（仅此一次） */}
         <Button variant="default" onClick={onAdd}>

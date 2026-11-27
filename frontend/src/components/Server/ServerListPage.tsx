@@ -5,7 +5,8 @@ import { Dashboard } from '@/layouts/Dashboard.tsx';
 import { ServerCard } from '@/components/Server/ServerCard.tsx';
 import { ServerEmptyState } from '@/components/Server/ServerEmptyState.tsx';
 import { ServerFormDialog } from '@/components/Server/ServerFormDialog.tsx';
-import { ServerToolbar } from '@/components/Server/ServerToolbar.tsx';
+import { ServerListRow } from '@/components/Server/ServerListRow.tsx';
+import { ServerToolbar, type ServerListViewType } from '@/components/Server/ServerToolbar.tsx';
 import { Skeleton } from '@/components/ui/skeleton.tsx';
 import { StoreContext } from '@/store/storeContext.ts';
 import { SERVER_SORTS, parseServerSort } from '@/lib/serverFormat.ts';
@@ -31,6 +32,11 @@ export const ServerListPage = observer(() => {
   const [search, setSearch] = React.useState('');
   // 缺省「状态（在线优先）」：与后端 parseSort 的缺省方向一致
   const [sortKey, setSortKey] = React.useState(SERVER_SORTS[0].value);
+  /**
+   * 视图档位（决策 D13）：页面 state，默认卡片；不做 URL 同步、不写 localStorage，
+   * 也不复用待办的模块级布局偏好（服务器列表是独立路由，视图不跨会话记忆）。
+   */
+  const [view, setView] = React.useState<ServerListViewType>('cards');
   /**
    * 添加服务器弹窗（task15，ServerFormDialog）：新建成功后同一弹窗内切换到安装指引态
    * （Token 明文与安装命令仅此一次展示）；store.createServer 内部已刷新列表。
@@ -73,6 +79,8 @@ export const ServerListPage = observer(() => {
       onSearchChange={setSearch}
       sortKey={sortKey}
       onSortChange={setSortKey}
+      view={view}
+      onViewChange={setView}
       onAdd={() => setAddDialogOpen(true)}
     />
   );
@@ -98,16 +106,28 @@ export const ServerListPage = observer(() => {
         {toolbar}
         <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto">
           {servers.length > 0 ? (
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(19rem,1fr))] gap-4 p-4">
-              {servers.map((server) => (
-                <ServerCard
-                  key={server.id}
-                  server={server}
-                  onOpen={openServerDetail}
-                  onOpenInstall={openServerInstallGuide}
-                />
-              ))}
-            </div>
+            view === 'cards' ? (
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(19rem,1fr))] gap-4 p-4">
+                {servers.map((server) => (
+                  <ServerCard
+                    key={server.id}
+                    server={server}
+                    onOpen={openServerDetail}
+                    onOpenInstall={openServerInstallGuide}
+                  />
+                ))}
+              </div>
+            ) : (
+              // 列表视图（决策 D13）：单容器内逐行，行之间由 ServerListRow 的 border-b 分隔；
+              // 空态与卡片视图共用（搜索 / 分组筛选无结果时仍走 ServerEmptyState）
+              <div className="p-4">
+                <div className="bg-card overflow-hidden rounded-lg border">
+                  {servers.map((server) => (
+                    <ServerListRow key={server.id} server={server} onOpen={openServerDetail} />
+                  ))}
+                </div>
+              </div>
+            )
           ) : (
             <ServerEmptyState
               variant={emptyVariant}

@@ -51,6 +51,7 @@ import { useItemListState } from '@/hooks/useItemListState.ts';
 import { SidebarToggler } from '@/components/Sidebar/SidebarToggler.tsx';
 import { MODULES, type ModuleItemType } from '@/lib/modules.ts';
 import { InstallSkillDialog } from '@/components/InstallSkillDialog.tsx';
+import { TodoList } from '@/components/Todo/TodoList.tsx';
 
 /** 全局搜索的匹配文本：标题 / 链接或来源 / 描述 / 标签名（模块差异集中在这里） */
 const buildSearchText = (item: ModuleItemType, tags: TagsObjectType): string => {
@@ -459,11 +460,18 @@ const Table = observer(() => {
 // 需要 observer：store.module 变化时要触发按模块懒加载
 export const ModuleList = observer(() => {
   const store = useContext(StoreContext);
+  const { setUrlState } = useUrlState();
 
   const [isLoading, setIsLoading] = useState(true);
   const loadedModules = React.useRef<Set<ModuleKey>>(new Set());
 
   useEffect(() => {
+    // 待办走独立外壳（TodoList 自己按需拉取列表），这里不拉标签 / 列表，也不进通用表格分支
+    if (store.module === 'todos') {
+      setIsLoading(false);
+      return;
+    }
+
     const loadData = async () => {
       const requests: Promise<unknown>[] = [];
 
@@ -482,8 +490,38 @@ export const ModuleList = observer(() => {
     loadData();
   }, [store, store.module]);
 
+  /**
+   * 模块切换时清理列表参数（PRD todo.md §5.1 / dev-spec §7）：
+   * 待办分支不挂载 `Table`，Table 里的模块切换清理 effect 不会执行，
+   * 而待办只使用 `search`（不写 tag / page / sort / order）。
+   * 只处理「进出待办」的切换，书签 ↔ Skill 的清理仍由 Table 负责，避免重复推历史记录。
+   */
+  const previousModule = React.useRef(store.module);
+  useEffect(() => {
+    const leaving = previousModule.current;
+    if (leaving === store.module) {
+      return;
+    }
+    previousModule.current = store.module;
+
+    if (store.module === 'todos' || leaving === 'todos') {
+      setUrlState({ page: null, search: null, sort: null, order: null, tag: null });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.module]);
+
   if (isLoading) {
     return <Loading />;
+  }
+
+  // 待办是普通模块（路由仍为 `/`），但外壳独立：不走通用 Table 三布局（todo.md §5.1 / §6.3）。
+  // Dashboard 由本层统一包裹，TodoList 内部不再重复套壳。
+  if (store.module === 'todos') {
+    return (
+      <Dashboard>
+        <TodoList />
+      </Dashboard>
+    );
   }
 
   return (

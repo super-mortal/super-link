@@ -248,6 +248,8 @@ class MainStore {
     this.module = key;
     // 模块切换后旧的标签筛选与批量选择都不再适用
     this.tagFilter = null;
+    // 侧栏待办概览的「未完成 / 已完成」筛选只在待办模块内有效，切换即回到默认视图
+    this.todoFilter = null;
   };
 
   get itemListFilters() {

@@ -20,6 +20,7 @@ import { Logo } from '@/components/Logo.tsx';
 import { ThemeToggler } from '@/components/Sidebar/ThemeToggler.tsx';
 import { NavTags } from '@/components/Sidebar/NavTags.tsx';
 import { NavPlatforms } from '@/components/Sidebar/NavPlatforms.tsx';
+import { TodoOverview } from '@/components/Todo/TodoOverview.tsx';
 import { SidebarSection } from '@/components/Sidebar/SidebarSection.tsx';
 import { SidebarFilterRow } from '@/components/Sidebar/SidebarFilterRow.tsx';
 import { SidebarDotColorMenu } from '@/components/Sidebar/SidebarDotColorMenu.tsx';
@@ -101,6 +102,12 @@ export const AppSidebar = observer(({ ...props }: AppSidebarProps) => {
     store.fetchSkills();
   }, [store]);
 
+  // 待办徽章显示未完成数、概览筛选显示两行计数：任意模块下都要准确，挂载时补齐一次
+  // （依赖只有 store，同一挂载周期内只拉一次；后续增删改由待办模块自身刷新）
+  React.useEffect(() => {
+    void store.fetchTodos();
+  }, [store]);
+
   // 平台计数只需要账号列表的元数据（平台名 + 条数），不解密任何字段，锁定态也加载（PRD §10.1）；
   // 账号库未初始化时接口返回 409，直接跳过
   React.useEffect(() => {
@@ -153,6 +160,9 @@ export const AppSidebar = observer(({ ...props }: AppSidebarProps) => {
           <NavPlatforms />
         ) : isServersRoute ? (
           <NavServerGroups />
+        ) : store.module === 'todos' ? (
+          // 待办是普通模块：侧栏第二区换成概览筛选（未完成 / 已完成），仍留在 / 路由
+          <TodoOverview />
         ) : (
           <NavTags itemIDsByTagID={itemIDsByTagID} />
         )}

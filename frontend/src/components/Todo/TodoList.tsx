@@ -5,6 +5,7 @@ import { TodoToolbar } from '@/components/Todo/TodoToolbar.tsx';
 import { TodoQuickAdd } from '@/components/Todo/TodoQuickAdd.tsx';
 import { TodoRow } from '@/components/Todo/TodoRow.tsx';
 import { TodoCard } from '@/components/Todo/TodoCard.tsx';
+import { TodoDoneSection } from '@/components/Todo/TodoDoneSection.tsx';
 import { Skeleton } from '@/components/ui/skeleton.tsx';
 import { MODULES } from '@/lib/modules.ts';
 import { getTodoDayLabel, type TodoDayLabel } from '@/lib/todoFormat.ts';
@@ -62,6 +63,9 @@ export const TodoList = observer(() => {
   /** 未完成数据源：只用 store.todos 派生，不在前端另存副本（完成后行随 store 自动离开） */
   const openTodos = store.todos.filter((todo) => !todo.done);
 
+  /** 已完成数据源：同样由 store.todos 派生，顺序由折叠区自己按 done_at 排序 */
+  const doneTodos = store.todos.filter((todo) => todo.done);
+
   /** 列表分段：按 Asia/Shanghai 日期归组，空段在后面被过滤掉 */
   const segments = DAY_ORDER.map((label) => ({
     label,
@@ -74,11 +78,16 @@ export const TodoList = observer(() => {
   };
 
   /**
-   * 删除占位：单条删除必须二次确认（PRD T13），确认弹窗由 task7 接入，
-   * 本任务先直达 store，保证删除按钮的点击链路可验证。
+   * 删除单条待办：二次确认已在 TodoRow / TodoCard 内部用共享 DeleteDialog 完成，
+   * 这里只执行删除；成功 toast 由 store.runRequest 按服务端 message 统一弹出。
    */
   const handleDelete = (id: number) => {
     void store.deleteTodo(id);
+  };
+
+  /** 清除全部已完成：二次确认已在已完成区内部完成，数据清空后折叠区随之消失 */
+  const handleClearDone = () => {
+    void store.clearDoneTodos();
   };
 
   return (
@@ -119,7 +128,17 @@ export const TodoList = observer(() => {
                   ))}
                 </div>
               )}
-              {/* 已完成折叠区：task7 / task9 接入 */}
+              {/* 已完成折叠区：默认收起，展开后跟随当前布局。
+                  为空时不挂载（而非仅返回 null），这样清空后再次产生完成项会回到收起态 */}
+              {doneTodos.length > 0 ? (
+                <TodoDoneSection
+                  todos={doneTodos}
+                  layout={layout}
+                  onToggle={handleToggle}
+                  onDelete={handleDelete}
+                  onClearDone={handleClearDone}
+                />
+              ) : null}
             </>
           ) : (
             <>

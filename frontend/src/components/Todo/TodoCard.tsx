@@ -1,5 +1,6 @@
 import { Trash2Icon } from 'lucide-react';
 import { TodoCheck } from '@/components/Todo/TodoCheck.tsx';
+import { DeleteDialog } from '@/components/Table/Controls/DeleteDialog.tsx';
 import { formatTodoTime } from '@/lib/todoFormat.ts';
 import { cn } from '@/lib/utils.ts';
 import type { TodoType } from '@/lib/types.ts';
@@ -44,18 +45,24 @@ export const TodoCard = ({ todo, onToggle, onDelete }: TodoCardProps) => {
         <span className="text-muted-foreground min-w-0 text-xs whitespace-nowrap tabular-nums">
           {formatTodoTime(todo.created_at)}
         </span>
-        <button
-          type="button"
-          aria-label="删除待办"
-          onClick={(event) => {
-            // 删除不是切换完成：拦住冒泡，避免点删除同时把待办勾掉
-            event.stopPropagation();
-            onDelete(todo.id);
-          }}
-          className="onhover-visible text-muted-foreground hover:bg-destructive/10 hover:text-destructive focus-visible:ring-ring ml-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors focus-visible:ring-2 focus-visible:outline-none"
+        <DeleteDialog
+          itemsCount={1}
+          noun="这条待办"
+          description={`「${todo.text}」删除后无法恢复。`}
+          onConfirm={() => onDelete(todo.id)}
         >
-          <Trash2Icon className="h-3.5 w-3.5" />
-        </button>
+          <button
+            type="button"
+            aria-label="删除待办"
+            onClick={(event) => {
+              // 删除不是切换完成：拦住冒泡，避免点删除同时把待办勾掉（对话框由 DeleteDialog 触发器打开）
+              event.stopPropagation();
+            }}
+            className="onhover-visible text-muted-foreground hover:bg-destructive/10 hover:text-destructive focus-visible:ring-ring ml-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors focus-visible:ring-2 focus-visible:outline-none"
+          >
+            <Trash2Icon className="h-3.5 w-3.5" />
+          </button>
+        </DeleteDialog>
       </div>
       <p className={cn('text-[15px] leading-relaxed wrap-anywhere', todo.done && 'text-muted-foreground line-through')}>
         {todo.text}

@@ -1,4 +1,4 @@
-import type { AccountType, ItemType, ModuleKey, SkillType } from '@/lib/types.ts';
+import type { AccountType, ItemType, LayoutType, ModuleKey, SkillType, TodoType } from '@/lib/types.ts';
 
 /**
  * 模块注册表：书签 / Skill / 账号库的全部差异（标题、日期、字段、排序、路由、文案）都在这里，
@@ -51,6 +51,10 @@ export type ModuleConfigType = {
   readonly sorts: readonly ModuleSortType[];
   readonly defaultSort: string;
   readonly routes: ModuleRoutesType;
+  /** 模块支持的布局；缺省为三种布局全支持（书签 / Skill / 账号库保持现状） */
+  readonly layouts?: readonly LayoutType[];
+  /** 首次进入该模块的布局（仅消费方显式读取时使用） */
+  readonly defaultLayout?: LayoutType;
 };
 
 /** 用实际数据形态判别：书签无 source_type，Skill 必有 */
@@ -82,6 +86,15 @@ const dateOfItem = (item: ModuleItemType): string | null => {
 };
 
 const updatedOfItem = (item: ModuleItemType): string | null => asText(item.updated_at);
+
+/** 待办判别：只有待办带 text（书签 / Skill / 账号都没有），同一签名下据此取本模块字段 */
+const isTodoItem = (item: ModuleItemType): item is ModuleItemType & TodoType => 'text' in item;
+
+const titleOfTodo = (item: ModuleItemType): string => (isTodoItem(item) ? item.text : titleOfItem(item));
+const dateOfTodo = (item: ModuleItemType): string | null =>
+  isTodoItem(item) ? asText(item.created_at) : dateOfItem(item);
+const updatedOfTodo = (item: ModuleItemType): string | null =>
+  isTodoItem(item) ? asText(item.updated_at) : updatedOfItem(item);
 
 const BOOKMARKS_MODULE = {
   key: 'bookmarks',
@@ -187,13 +200,42 @@ const ACCOUNTS_MODULE = {
   },
 } as const satisfies ModuleConfigType;
 
-/** 遍历顺序即侧栏模块顺序 */
-export const MODULE_KEYS = ['bookmarks', 'skills', 'accounts'] as const satisfies readonly ModuleKey[];
+/**
+ * 待办（PRD docs/prd/todo.md §5.1 / §6.3 / T3）：只有列表 + 卡片两种布局、默认卡片，
+ * 没有字段列 / 标签 / 详情页；内容渲染走独立外壳，这里供侧栏、工具栏与布局偏好消费。
+ */
+const TODOS_MODULE = {
+  key: 'todos',
+  label: '待办',
+  noun: '待办',
+  pagination: { count: '待办', size: '条' },
+  sectionLabel: '概览',
+  dateLabel: '创建时间',
+  titleLabel: '待办',
+  addLabel: '添加',
+  titleOf: titleOfTodo,
+  dateOf: dateOfTodo,
+  updatedOf: updatedOfTodo,
+  fields: [],
+  // 界面不渲染排序菜单，仅保留占位以满足配置签名（PRD §6.3）
+  sorts: [{ key: 'created-desc', label: '创建时间（新→旧）', sortBy: 'created_at', order: 'desc' }],
+  defaultSort: 'created-desc',
+  routes: {
+    create: null,
+    detail: null,
+  },
+  layouts: ['list', 'cards'],
+  defaultLayout: 'cards',
+} as const satisfies ModuleConfigType;
+
+/** 遍历顺序即侧栏模块顺序（待办在书签下面；服务器为独立入口，不在注册表内） */
+export const MODULE_KEYS = ['bookmarks', 'todos', 'skills', 'accounts'] as const satisfies readonly ModuleKey[];
 
 export const DEFAULT_MODULE: ModuleKey = 'bookmarks';
 
 export const MODULES: Record<ModuleKey, ModuleConfigType> = {
   bookmarks: BOOKMARKS_MODULE,
+  todos: TODOS_MODULE,
   skills: SKILLS_MODULE,
   accounts: ACCOUNTS_MODULE,
 };

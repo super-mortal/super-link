@@ -63,7 +63,7 @@ export type LayoutType = 'table' | 'cards' | 'list';
 
 export type TagFilterType = number | 'none' | null;
 
-export type ModuleKey = 'bookmarks' | 'skills' | 'accounts';
+export type ModuleKey = 'bookmarks' | 'todos' | 'skills' | 'accounts';
 
 export type SkillSourceType = 'github' | 'upload';
 

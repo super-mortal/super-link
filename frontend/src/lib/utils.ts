@@ -1,6 +1,7 @@
 import { type ClassValue, clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { LayoutType, ModuleKey } from '@/lib/types.ts';
+import { MODULES } from '@/lib/modules.ts';
 import { VisibilityState } from '@tanstack/react-table';
 
 export function cn(...inputs: ClassValue[]) {
@@ -36,6 +37,39 @@ export const getSavedLayoutPreference = (): LayoutType => {
 export const saveLayoutPreference = (value: LayoutType): void => {
   try {
     localStorage.setItem('layout', value);
+  } catch {
+    // Ignore storage errors - failing silently is acceptable for preferences
+  }
+};
+
+const isLayoutType = (value: string): value is LayoutType => value === 'list' || value === 'cards' || value === 'table';
+
+/**
+ * 按模块记忆布局（PRD docs/prd/todo.md §5.1 / T3）：存储 key 为 `layout-<module>`，
+ * 与全局 `layout` 分开，书签 / Skill / 账号库继续走 getSavedLayoutPreference()。
+ * 首次进入（无存储）用调用方传入的 fallback（待办传 defaultLayout=cards）；存量值不在
+ * 本模块可用布局内（如待办切到 table）时回落列表，避免渲染出该模块没有的视图。
+ */
+export const getSavedLayoutPreferenceForModule = (module: ModuleKey, fallback: LayoutType): LayoutType => {
+  let stored: string | null = null;
+  try {
+    stored = localStorage.getItem(`layout-${module}`);
+  } catch {
+    return fallback;
+  }
+  if (!stored || !isLayoutType(stored)) {
+    return fallback;
+  }
+  const allowed = MODULES[module].layouts;
+  if (allowed && !allowed.some((layout) => layout === stored)) {
+    return 'list';
+  }
+  return stored;
+};
+
+export const saveLayoutPreferenceForModule = (module: ModuleKey, layout: LayoutType): void => {
+  try {
+    localStorage.setItem(`layout-${module}`, layout);
   } catch {
     // Ignore storage errors - failing silently is acceptable for preferences
   }

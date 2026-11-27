@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/sidebar.tsx';
 import * as React from 'react';
 import { observer } from 'mobx-react-lite';
-import { Bookmark, KeyRound, Lock, Server, Sparkles } from 'lucide-react';
+import { Bookmark, KeyRound, ListTodo, Lock, Server, Sparkles } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { StoreContext, VaultStoreContext } from '@/store/storeContext.ts';
 import { useItemListState } from '@/hooks/useItemListState.ts';
@@ -18,6 +18,8 @@ import { ModuleKey } from '@/lib/types.ts';
 
 const MODULE_ICONS: Record<ModuleKey, React.ComponentType<{ className?: string }>> = {
   bookmarks: Bookmark,
+  // PRD §5.1 / T2：待办位于书签下面，图标为 ListTodo
+  todos: ListTodo,
   skills: Sparkles,
   // PRD §5.1：账号库模块图标为 KeyRound
   accounts: KeyRound,
@@ -38,6 +40,8 @@ export const ModuleSwitcher = observer(() => {
 
   const moduleCounts: Record<ModuleKey, number> = {
     bookmarks: store.items.length,
+    // PRD §5.1 / T11：待办徽章显示未完成数（数据由 AppSidebar 进入路由时补拉）
+    todos: store.todos.filter((todo) => !todo.done).length,
     skills: store.skills.length,
     accounts: store.accounts.length,
   };

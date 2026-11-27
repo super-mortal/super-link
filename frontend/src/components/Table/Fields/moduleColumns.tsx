@@ -77,9 +77,13 @@ const tagsColumn: ColumnDef<ModuleItemType> = {
   },
 };
 
-/** 标题列是固定列（不在 fields 内），accessorKey 与模块排序键一致 */
-const TITLE_ACCESSOR_KEY: Record<ModuleKey, 'title' | 'name'> = {
+/**
+ * 标题列的 accessorKey（accessorKey 与模块排序键一致）。
+ * 待办不渲染表格布局（列集合为空），这里补 'text' 只为让 Record 类型齐全。
+ */
+const TITLE_ACCESSOR_KEY: Record<ModuleKey, 'title' | 'name' | 'text'> = {
   bookmarks: 'title',
+  todos: 'text',
   skills: 'name',
   accounts: 'name',
 };
@@ -204,12 +208,15 @@ const buildColumnOrder = (module: ModuleKey): string[] => [
 
 export const MODULE_COLUMNS: Record<ModuleKey, ColumnDef<ModuleItemType>[]> = {
   bookmarks: buildModuleColumns('bookmarks'),
+  // 待办没有表格布局，真正渲染走 components/Todo 的独立外壳
+  todos: [],
   skills: buildModuleColumns('skills'),
   accounts: buildModuleColumns('accounts'),
 };
 
 export const MODULE_COLUMN_ORDER: Record<ModuleKey, string[]> = {
   bookmarks: buildColumnOrder('bookmarks'),
+  todos: [],
   skills: buildColumnOrder('skills'),
   accounts: buildColumnOrder('accounts'),
 };
